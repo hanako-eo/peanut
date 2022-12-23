@@ -1,3 +1,10 @@
+use frontend::parser::Parser;
+
+mod errors;
+mod frontend;
+
 fn main() {
-    println!("Hello, world!");
+    let parser = Parser::parse("0;");
+
+    println!("{:?}", parser);
 }
