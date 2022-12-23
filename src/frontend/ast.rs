@@ -15,6 +15,7 @@ pub enum Op {
     Multiply,
     Divide,
     ModDiv,
+    QuotDiv,
     In,
     Dot,
 }

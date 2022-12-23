@@ -8,7 +8,7 @@ pub enum TokenKind {
     OpenParen,    // (
     CloseParen,   // )
     Semicolon,    // ;
-    Colon,        // ;
+    Colon,        // :
     Comma,        // ,
     Dot,          // .
     Plus,         // +
