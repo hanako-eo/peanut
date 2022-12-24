@@ -9,6 +9,25 @@ use super::{
     token::{Token, TokenKind},
 };
 
+macro_rules! parse_op_expr {
+    ($(fn $name:ident from $calle:ident {$($token:path => $op:expr,)* })*) => {
+        $(fn $name(&mut self) -> Result<Expr> {
+            let mut left = self.$calle()?;
+
+            while $(self.check($token).is_ok() ||)* true {
+                let op = match self.eat().unwrap().kind() {
+                    $(&$token => $op,)*
+                    _ => panic!(),
+                };
+                let right = self.$calle()?;
+                left = Expr::Op(op, Box::new(left), Box::new(right))
+            }
+
+            Ok(left)
+        })*
+    };
+}
+
 pub struct Parser {
     tokens: VecDeque<Token>,
 }
@@ -90,53 +109,47 @@ impl Parser {
     /// ❌ Assignment
     /// ❌ Member
     /// ❌ Function call
-    /// ❌ Logical operator
-    /// ❌ Comparison
+    /// ✅ Logical operator
+    /// ✅ Comparison
     /// ✅ Additive
     /// ✅ Multiplication
     /// ✅ Unary
     /// ✅ Primary
     fn parse_expr(&mut self) -> Result<Expr> {
-        self.parse_additive_expr()
+        self.parse_logical_expr()
     }
 
-    fn parse_additive_expr(&mut self) -> Result<Expr> {
-        let mut left = self.parse_multiplicative_expr()?;
+    // fn parse_comparison_expr(&mut self) -> Result<Expr> {}
 
-        while self.check(TokenKind::Plus).is_ok() || self.check(TokenKind::Minus).is_ok() {
-            let op = match self.current_token().unwrap().kind() {
-                &TokenKind::Plus => Op::Add,
-                &TokenKind::Minus => Op::Subtract,
-                _ => panic!(),
-            };
-            let right = self.parse_multiplicative_expr()?;
-            left = Expr::Op(op, Box::new(left), Box::new(right))
+    parse_op_expr!(
+        fn parse_logical_expr from parse_comparison_expr {
+            TokenKind::And => Op::And,
+            TokenKind::Or => Op::Or,
+            TokenKind::Amp => Op::BineryAnd,
+            TokenKind::Pipe => Op::BineryOr,
         }
 
-        Ok(left)
-    }
-
-    fn parse_multiplicative_expr(&mut self) -> Result<Expr> {
-        let mut left = self.parse_unary_expr()?;
-
-        while self.check(TokenKind::Star).is_ok()
-            || self.check(TokenKind::Slash).is_ok()
-            || self.check(TokenKind::Percent).is_ok()
-            || self.check(TokenKind::Colon).is_ok()
-        {
-            let op = match self.current_token().unwrap().kind() {
-                &TokenKind::Star => Op::Multiply,
-                &TokenKind::Slash => Op::Divide,
-                &TokenKind::Percent => Op::ModDiv,
-                &TokenKind::Colon => Op::QuotDiv,
-                _ => panic!(),
-            };
-            let right = self.parse_unary_expr()?;
-            left = Expr::Op(op, Box::new(left), Box::new(right))
+        fn parse_comparison_expr from parse_additive_expr {
+            TokenKind::Equals => Op::Equals,
+            TokenKind::NotEqual => Op::NotEquals,
+            TokenKind::Greater => Op::GreaterThan,
+            TokenKind::GreaterEqual => Op::GreaterEquals,
+            TokenKind::Less => Op::LessThan,
+            TokenKind::LessEqual => Op::LessEquals,
         }
 
-        Ok(left)
-    }
+        fn parse_additive_expr from parse_multiplicative_expr {
+            TokenKind::Plus => Op::Add,
+            TokenKind::Minus => Op::Subtract,
+        }
+
+        fn parse_multiplicative_expr from parse_unary_expr {
+            TokenKind::Star => Op::Multiply,
+            TokenKind::Slash => Op::Divide,
+            TokenKind::Percent => Op::ModDiv,
+            TokenKind::Colon => Op::QuotDiv,
+        }
+    );
 
     fn parse_unary_expr(&mut self) -> Result<Expr> {
         let unary = match self.current_token().unwrap().kind() {
