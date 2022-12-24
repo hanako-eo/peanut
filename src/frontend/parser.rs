@@ -14,7 +14,7 @@ macro_rules! parse_op_expr {
         $(fn $name(&mut self) -> Result<Expr> {
             let mut left = self.$calle()?;
 
-            while $(self.check($token).is_ok() ||)* true {
+            while $(self.check($token).is_ok() ||)* false {
                 let op = match self.eat().unwrap().kind() {
                     $(&$token => $op,)*
                     _ => panic!(),
@@ -70,7 +70,9 @@ impl Parser {
         let mut statements = Vec::new();
         while let Some(_) = self.current_token() {
             statements.push(self.parse_statement()?);
-            self.eat();
+            if !self.check(TokenKind::Semicolon).is_ok() {
+                self.eat();
+            }
             self.expect(TokenKind::Semicolon)?;
         }
         Ok(Stmt::Program(statements))
@@ -166,13 +168,12 @@ impl Parser {
     }
 
     fn parse_primary_expr(&mut self) -> Result<Expr> {
-        let token = self.current_token().unwrap();
+        let token = self.eat().unwrap();
         Ok(match token.kind() {
             TokenKind::ID(symbol) => Expr::Identifier(symbol.clone()),
             TokenKind::Number(num) => Expr::NumberLiteral(num.parse().unwrap()),
             TokenKind::String(str) => Expr::StringLiteral(str.clone()),
             TokenKind::OpenParen => {
-                self.eat();
                 let expr = self.parse_expr()?;
                 self.expect(TokenKind::CloseParen)?;
                 expr
