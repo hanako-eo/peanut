@@ -1,4 +1,7 @@
-use crate::errors::{Error, ErrorKind, Result};
+use crate::{
+    errors::{Error, ErrorKind, Result},
+    parse_op_expr,
+};
 
 use core::mem;
 use std::collections::VecDeque;
@@ -8,25 +11,6 @@ use super::{
     lexer::Lexer,
     token::{Token, TokenKind},
 };
-
-macro_rules! parse_op_expr {
-    ($(fn $name:ident from $calle:ident {$($token:path => $op:expr,)* })*) => {
-        $(fn $name(&mut self) -> Result<Expr> {
-            let mut left = self.$calle()?;
-
-            while $(self.check($token).is_ok() ||)* false {
-                let op = match self.eat().unwrap().kind() {
-                    $(&$token => $op,)*
-                    _ => panic!(),
-                };
-                let right = self.$calle()?;
-                left = Expr::Op(op, Box::new(left), Box::new(right))
-            }
-
-            Ok(left)
-        })*
-    };
-}
 
 pub struct Parser {
     tokens: VecDeque<Token>,
@@ -70,9 +54,6 @@ impl Parser {
         let mut statements = Vec::new();
         while let Some(_) = self.current_token() {
             statements.push(self.parse_statement()?);
-            if !self.check(TokenKind::Semicolon).is_ok() {
-                self.eat();
-            }
             self.expect(TokenKind::Semicolon)?;
         }
         Ok(Stmt::Program(statements))
@@ -107,6 +88,42 @@ impl Parser {
         })
     }
 
+    fn parse_if_expr(&mut self) -> Result<Expr> {
+        let mut conditions = Vec::new();
+        let mut first = true;
+
+        loop {
+            match (first, self.check(TokenKind::Else)) {
+                (true, _) => (),
+                (false, Err(_)) => break,
+                (false, Ok(())) => {
+                    self.eat();
+                }
+            };
+
+            let condition = match (first, self.check(TokenKind::If)) {
+                (true, _) => Some(self.parse_expr()?),
+                (false, Err(_)) => None,
+                (false, Ok(())) => {
+                    self.eat();
+                    Some(self.parse_expr()?)
+                }
+            };
+
+            let body = Box::new(self.parse_expr()?);
+            match condition {
+                Some(condition) => conditions.push((Some(condition), body)),
+                None => {
+                    conditions.push((None, body));
+                    break;
+                }
+            }
+            first = false;
+        }
+
+        Ok(Expr::If(conditions))
+    }
+
     /// Expression parsing orders of precedence
     /// ❌ Assignment
     /// ❌ Member
@@ -120,8 +137,6 @@ impl Parser {
     fn parse_expr(&mut self) -> Result<Expr> {
         self.parse_logical_expr()
     }
-
-    // fn parse_comparison_expr(&mut self) -> Result<Expr> {}
 
     parse_op_expr!(
         fn parse_logical_expr from parse_comparison_expr {
@@ -163,13 +178,15 @@ impl Parser {
 
         match unary {
             UnaryOp::None => self.parse_primary_expr(),
-            _ => Ok(Expr::UnaryOp(unary, Box::new(self.parse_unary_expr()?))),
+            _ => {
+                self.eat();
+                Ok(Expr::UnaryOp(unary, Box::new(self.parse_unary_expr()?)))
+            }
         }
     }
 
     fn parse_primary_expr(&mut self) -> Result<Expr> {
-        let token = self.eat().unwrap();
-        Ok(match token.kind() {
+        Ok(match self.eat().unwrap().kind() {
             TokenKind::ID(symbol) => Expr::Identifier(symbol.clone()),
             TokenKind::Number(num) => Expr::NumberLiteral(num.parse().unwrap()),
             TokenKind::String(str) => Expr::StringLiteral(str.clone()),
@@ -178,6 +195,7 @@ impl Parser {
                 self.expect(TokenKind::CloseParen)?;
                 expr
             }
+            TokenKind::If => self.parse_if_expr()?,
             _ => Expr::None,
         })
     }

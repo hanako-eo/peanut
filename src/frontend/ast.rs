@@ -39,7 +39,7 @@ pub enum Expr {
     Call(Box<Expr>, Vec<Expr>),
     Closure(Vec<String>, Vec<Stmt>),
     Block(Vec<Stmt>),
-    If(Vec<(Option<Expr>, Vec<Stmt>)>),
+    If(Vec<(Option<Expr>, Box<Expr>)>),
 
     UnaryOp(UnaryOp, Box<Expr>),
     Op(Op, Box<Expr>, Box<Expr>),
