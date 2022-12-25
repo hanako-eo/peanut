@@ -13,6 +13,7 @@ pub enum ErrorKind {
         received: Token,
         expected: TokenKind,
     },
+    UnsuspectedToken(Token),
     EOF,
 }
 

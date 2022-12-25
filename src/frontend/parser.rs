@@ -75,7 +75,7 @@ impl Parser {
         // variable declaration -> let|const foo = 0
         let is_constant = self.eat().unwrap().kind() == &TokenKind::Const;
         let token = self.expect(TokenKind::ID(String::new()))?;
-        let TokenKind::ID(name) = token.kind() else { panic!() };
+        let TokenKind::ID(name) = token.kind() else { return self.generate_unsuspected(token) };
 
         self.expect(TokenKind::Equal)?;
 
@@ -199,7 +199,8 @@ impl Parser {
     }
 
     fn parse_primary_expr(&mut self) -> Result<Expr> {
-        Ok(match self.eat().unwrap().kind() {
+        let token = self.eat().unwrap();
+        Ok(match token.kind() {
             TokenKind::ID(symbol) => Expr::Identifier(symbol.clone()),
             TokenKind::Number(num) => Expr::NumberLiteral(num.parse().unwrap()),
             TokenKind::String(str) => Expr::StringLiteral(str.clone()),
@@ -209,7 +210,7 @@ impl Parser {
                 expr
             }
             TokenKind::If => self.parse_if_expr()?,
-            _ => panic!(),
+            _ => return self.generate_unsuspected(token),
         })
     }
 
@@ -223,5 +224,9 @@ impl Parser {
 
     fn generate_expected<T>(&self, expected: TokenKind) -> Result<T> {
         Err(Error::from_kind(ErrorKind::ExpectedToken(expected)))
+    }
+
+    fn generate_unsuspected<T>(&self, unsuspected: Token) -> Result<T> {
+        Err(Error::from_kind(ErrorKind::UnsuspectedToken(unsuspected)))
     }
 }

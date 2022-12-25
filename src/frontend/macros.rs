@@ -5,9 +5,10 @@ macro_rules! parse_op_expr {
             let mut left = self.$calle()?;
 
             while $(self.check($token).is_ok() ||)* false {
-                let op = match self.eat().unwrap().kind() {
+                let token = self.eat().unwrap();
+                let op = match token.kind() {
                     $(&$token => $op,)*
-                    _ => panic!(),
+                    _ => return self.generate_unsuspected(token),
                 };
 
                 let right = self.$calle()?;
