@@ -25,7 +25,7 @@ impl Parser {
     }
 
     fn check(&self, token_kind: TokenKind) -> Result<()> {
-        match self.current_token() {
+        match self.at(0) {
             Some(token) => {
                 if mem::discriminant(token.kind()) == mem::discriminant(&token_kind) {
                     Ok(())
@@ -37,8 +37,8 @@ impl Parser {
         }
     }
 
-    fn current_token(&self) -> Option<&Token> {
-        self.tokens.get(0)
+    fn at(&self, index: usize) -> Option<&Token> {
+        self.tokens.get(index)
     }
 
     fn eat(&mut self) -> Option<Token> {
@@ -52,7 +52,7 @@ impl Parser {
     /// COLLECT
     fn parse_program(&mut self) -> Result<Stmt> {
         let mut statements = Vec::new();
-        while let Some(_) = self.current_token() {
+        while let Some(_) = self.at(0) {
             statements.push(self.parse_statement()?);
             self.expect(TokenKind::Semicolon)?;
         }
@@ -60,7 +60,7 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Stmt> {
-        let Some(current) = self.current_token() else {
+        let Some(current) = self.at(0) else {
             return Ok(Stmt::None)
         };
 
@@ -135,7 +135,7 @@ impl Parser {
     /// ✅ Unary
     /// ✅ Primary
     fn parse_expr(&mut self) -> Result<Expr> {
-        self.parse_logical_expr()
+        self.parse_assignment()
     }
 
     parse_op_expr!(
@@ -168,8 +168,21 @@ impl Parser {
         }
     );
 
+    fn parse_assignment(&mut self) -> Result<Expr> {
+        let left = self.parse_logical_expr()?;
+
+        Ok(match self.check(TokenKind::Equals) {
+            Ok(()) => {
+                self.eat();
+                let value = self.parse_logical_expr()?;
+                Expr::Assign(Box::new(left), Box::new(value))
+            }
+            _ => left,
+        })
+    }
+
     fn parse_unary_expr(&mut self) -> Result<Expr> {
-        let unary = match self.current_token().unwrap().kind() {
+        let unary = match self.at(0).unwrap().kind() {
             &TokenKind::Plus => UnaryOp::Positive,
             &TokenKind::Minus => UnaryOp::Negate,
             &TokenKind::Not => UnaryOp::Not,
@@ -196,7 +209,7 @@ impl Parser {
                 expr
             }
             TokenKind::If => self.parse_if_expr()?,
-            _ => Expr::None,
+            _ => panic!(),
         })
     }
 
