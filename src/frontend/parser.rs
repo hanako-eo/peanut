@@ -76,7 +76,9 @@ impl Parser {
         let mut statements = Vec::new();
         while let Some(_) = self.at(0) {
             statements.push(self.parse_statement()?);
-            self.expect(TokenKind::Semicolon)?;
+            if self.check(TokenKind::Semicolon) {
+                self.eat();
+            }
         }
         Ok(Stmt::Program(statements))
     }
@@ -133,7 +135,10 @@ impl Parser {
                 }
 
                 body.push(self.parse_statement()?);
-                self.expect(TokenKind::Semicolon)?;
+
+                if self.check(TokenKind::Semicolon) {
+                    self.eat();
+                }
             }
             self.expect(TokenKind::CloseBrace)?;
         }
@@ -364,7 +369,7 @@ mod tests {
 
     #[test]
     fn var_declaration() {
-        let ast = Parser::parse("let a = 0;\nconst a = 0;");
+        let ast = Parser::parse("let a = 0\nconst a = 0");
 
         assert_eq!(
             ast,
@@ -385,7 +390,7 @@ mod tests {
 
     #[test]
     fn arithmetic_expression() {
-        let ast = Parser::parse("(-a + 2 * 4) / 2 + (b : 2) - (c % 2);");
+        let ast = Parser::parse("(-a + 2 * 4) / 2 + (b : 2) - (c % 2)");
 
         assert_eq!(
             ast,
@@ -426,7 +431,7 @@ mod tests {
 
     #[test]
     fn function_definition() {
-        let ast = Parser::parse("func test() {};");
+        let ast = Parser::parse("func test() {}");
 
         assert_eq!(
             ast,
@@ -438,7 +443,7 @@ mod tests {
             }]))
         );
 
-        let ast = Parser::parse("func test() {0;};");
+        let ast = Parser::parse("func test() {0}");
 
         assert_eq!(
             ast,
@@ -450,7 +455,7 @@ mod tests {
             }]))
         );
 
-        let ast = Parser::parse("func test(a string) {};");
+        let ast = Parser::parse("func test(a string) {}");
 
         assert_eq!(
             ast,
@@ -465,7 +470,7 @@ mod tests {
 
     #[test]
     fn condition() {
-        let ast = Parser::parse("if 2 1;");
+        let ast = Parser::parse("if 2 1");
 
         assert_eq!(
             ast,
@@ -475,7 +480,7 @@ mod tests {
             )]))]))
         );
 
-        let ast = Parser::parse("if 2 1 else if 4 3;");
+        let ast = Parser::parse("if 2 1 else if 4 3");
 
         assert_eq!(
             ast,
@@ -491,7 +496,7 @@ mod tests {
             ]))]))
         );
 
-        let ast = Parser::parse("if 2 1 else 3;");
+        let ast = Parser::parse("if 2 1 else 3");
 
         assert_eq!(
             ast,
@@ -507,7 +512,7 @@ mod tests {
 
     #[test]
     fn assignment() {
-        let ast = Parser::parse("a = 1;");
+        let ast = Parser::parse("a = 1");
 
         assert_eq!(
             ast,
@@ -517,7 +522,7 @@ mod tests {
             ))]))
         );
 
-        let ast = Parser::parse("a += 1;");
+        let ast = Parser::parse("a += 1");
 
         assert_eq!(
             ast,
@@ -534,7 +539,7 @@ mod tests {
 
     #[test]
     fn call() {
-        let ast = Parser::parse("a();");
+        let ast = Parser::parse("a()");
 
         assert_eq!(
             ast,
@@ -544,7 +549,7 @@ mod tests {
             ))]))
         );
 
-        let ast = Parser::parse("a(1);");
+        let ast = Parser::parse("a(1)");
 
         assert_eq!(
             ast,
@@ -554,7 +559,7 @@ mod tests {
             ))]))
         );
 
-        let ast = Parser::parse("a()(1);");
+        let ast = Parser::parse("a()(1)");
 
         assert_eq!(
             ast,
