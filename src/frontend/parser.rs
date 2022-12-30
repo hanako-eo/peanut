@@ -138,7 +138,7 @@ impl Parser {
             name,
             args,
             return_type,
-            body: Vec::new(),
+            body,
         })
     }
 
@@ -258,7 +258,7 @@ impl Parser {
     fn parse_assignment(&mut self) -> Result<Expr> {
         let left = self.parse_call_member_expr()?;
 
-        Ok(if self.check(TokenKind::Equals) {
+        Ok(if self.check(TokenKind::Equal) {
             self.eat();
             let value = self.parse_call_member_expr()?;
             Expr::Assign(Box::new(left), Box::new(value))
@@ -337,5 +337,217 @@ impl Parser {
 
     fn generate_unsuspected<T>(&self, unsuspected: Token) -> Result<T> {
         Err(Error::from_kind(ErrorKind::UnsuspectedToken(unsuspected)))
+    }
+}
+
+mod tests {
+    use crate::{
+        errors::{Error, ErrorKind},
+        frontend::ast::{Expr, Op, Stmt, UnaryOp},
+    };
+
+    use super::Parser;
+
+    #[test]
+    fn var_declaration() {
+        let ast = Parser::parse("let a = 0;\nconst a = 0;");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![
+                Stmt::VarDeclaration {
+                    name: "a".into(),
+                    value: Expr::NumberLiteral(0.),
+                    constant: false
+                },
+                Stmt::VarDeclaration {
+                    name: "a".into(),
+                    value: Expr::NumberLiteral(0.),
+                    constant: true
+                }
+            ]))
+        );
+    }
+
+    #[test]
+    fn arithmetic_expression() {
+        let ast = Parser::parse("(-a + 2 * 4) / 2 + (b : 2) - (c % 2);");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Op(
+                Op::Subtract,
+                Box::new(Expr::Op(
+                    Op::Add,
+                    Box::new(Expr::Op(
+                        Op::Divide,
+                        Box::new(Expr::Op(
+                            Op::Add,
+                            Box::new(Expr::UnaryOp(
+                                UnaryOp::Negate,
+                                Box::new(Expr::Identifier("a".into()))
+                            )),
+                            Box::new(Expr::Op(
+                                Op::Multiply,
+                                Box::new(Expr::NumberLiteral(2.0)),
+                                Box::new(Expr::NumberLiteral(4.0))
+                            ))
+                        )),
+                        Box::new(Expr::NumberLiteral(2.0))
+                    )),
+                    Box::new(Expr::Op(
+                        Op::QuotDiv,
+                        Box::new(Expr::Identifier("b".into())),
+                        Box::new(Expr::NumberLiteral(2.0))
+                    ))
+                )),
+                Box::new(Expr::Op(
+                    Op::ModDiv,
+                    Box::new(Expr::Identifier("c".into())),
+                    Box::new(Expr::NumberLiteral(2.0))
+                ))
+            ))]))
+        );
+    }
+
+    #[test]
+    fn function_definition() {
+        let ast = Parser::parse("func test() {};");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::FunctionDefinition {
+                name: "test".into(),
+                return_type: None,
+                args: Vec::new(),
+                body: Vec::new()
+            }]))
+        );
+
+        let ast = Parser::parse("func test() {0;};");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::FunctionDefinition {
+                name: "test".into(),
+                return_type: None,
+                args: Vec::new(),
+                body: vec![Stmt::ExprStmt(Expr::NumberLiteral(0.))]
+            }]))
+        );
+
+        let ast = Parser::parse("func test(a string) {};");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::FunctionDefinition {
+                name: "test".into(),
+                return_type: None,
+                args: vec![("a".into(), "string".into())],
+                body: Vec::new(),
+            }]))
+        );
+    }
+
+    #[test]
+    fn condition() {
+        let ast = Parser::parse("if 2 1;");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::If(vec![(
+                Some(Expr::NumberLiteral(2.)),
+                Box::new(Expr::NumberLiteral(1.))
+            )]))]))
+        );
+
+        let ast = Parser::parse("if 2 1 else if 4 3;");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::If(vec![
+                (
+                    Some(Expr::NumberLiteral(2.)),
+                    Box::new(Expr::NumberLiteral(1.))
+                ),
+                (
+                    Some(Expr::NumberLiteral(4.)),
+                    Box::new(Expr::NumberLiteral(3.))
+                )
+            ]))]))
+        );
+
+        let ast = Parser::parse("if 2 1 else 3;");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::If(vec![
+                (
+                    Some(Expr::NumberLiteral(2.)),
+                    Box::new(Expr::NumberLiteral(1.))
+                ),
+                (None, Box::new(Expr::NumberLiteral(3.)))
+            ]))]))
+        );
+    }
+
+    #[test]
+    fn assignment() {
+        let ast = Parser::parse("a = 1;");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Assign(
+                Box::new(Expr::Identifier("a".into())),
+                Box::new(Expr::NumberLiteral(1.)),
+            ))]))
+        );
+
+        // let ast = Parser::parse("a += 1;");
+
+        // assert_eq!(
+        //     ast,
+        //     Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Assign(
+        //         Box::new(Expr::Identifier("a".into())),
+        //         Box::new(Expr::Op(
+        //             Op::Add,
+        //             Box::new(Expr::Identifier("a".into())),
+        //             Box::new(Expr::NumberLiteral(1.))
+        //         )),
+        //     ))]))
+        // );
+    }
+
+    #[test]
+    fn call() {
+        let ast = Parser::parse("a();");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Call(
+                Box::new(Expr::Identifier("a".into())),
+                Vec::new(),
+            ))]))
+        );
+
+        let ast = Parser::parse("a(1);");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Call(
+                Box::new(Expr::Identifier("a".into())),
+                vec![Expr::NumberLiteral(1.)],
+            ))]))
+        );
+
+        let ast = Parser::parse("a()(1);");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Call(
+                Box::new(Expr::Call(Box::new(Expr::Identifier("a".into())), vec![],)),
+                vec![Expr::NumberLiteral(1.)],
+            ))]))
+        );
     }
 }
