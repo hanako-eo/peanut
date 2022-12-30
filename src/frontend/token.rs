@@ -28,6 +28,7 @@ pub enum TokenKind {
     And,          // &&
     Pipe,         // |
     Or,           // ||
+    BigArrow,     // =>
 
     // Literals
     ID(String),

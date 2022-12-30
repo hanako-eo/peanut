@@ -4,11 +4,11 @@ macro_rules! parse_op_expr {
         $(fn $name(&mut self) -> Result<Expr> {
             let mut left = self.$calle()?;
 
-            while $(self.check($token).is_ok() ||)* false {
+            while $(self.check($token))||* {
                 let token = self.eat().unwrap();
                 let op = match token.kind() {
                     $(&$token => $op,)*
-                    _ => return self.generate_unsuspected(token),
+                    _ => return self.generate_unsuspected(token.clone()),
                 };
 
                 let right = self.$calle()?;

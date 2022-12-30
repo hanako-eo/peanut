@@ -52,7 +52,12 @@ pub enum Stmt {
     Program(Vec<Stmt>),
     Return(Expr),
     ExprStmt(Expr),
-    FunctionDefinition(String, Vec<String>, Vec<Stmt>),
+    FunctionDefinition {
+        name: String,
+        return_type: Option<String>,
+        args: Vec<(String, String)>,
+        body: Vec<Stmt>,
+    },
     VarDeclaration {
         name: String,
         value: Expr,

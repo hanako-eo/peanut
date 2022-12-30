@@ -24,16 +24,12 @@ impl Parser {
         parser.parse_program()
     }
 
-    fn check(&self, token_kind: TokenKind) -> Result<()> {
+    fn check(&self, token_kind: TokenKind) -> bool {
         match self.at(0) {
-            Some(token) => {
-                if mem::discriminant(token.kind()) == mem::discriminant(&token_kind) {
-                    Ok(())
-                } else {
-                    self.generate_unexpected(token, token_kind)
-                }
+            Some(token) if mem::discriminant(token.kind()) == mem::discriminant(&token_kind) => {
+                true
             }
-            None => self.generate_expected(token_kind),
+            _ => false,
         }
     }
 
@@ -46,7 +42,29 @@ impl Parser {
     }
 
     fn expect(&mut self, token_kind: TokenKind) -> Result<Token> {
-        self.check(token_kind).map(|_| self.eat().unwrap())
+        match self.at(0) {
+            Some(token) if mem::discriminant(token.kind()) == mem::discriminant(&token_kind) => {
+                Ok(self.eat().unwrap())
+            }
+            Some(token) => self.generate_unexpected(token, token_kind),
+            None => self.generate_expected(token_kind),
+        }
+    }
+
+    fn expect_ident(&mut self) -> Result<Token> {
+        match self.at(0) {
+            Some(token) if matches!(token.kind(), TokenKind::ID(_)) => Ok(self.eat().unwrap()),
+            Some(token) => self.generate_unexpected(token, TokenKind::ID(String::new())),
+            None => self.generate_expected(TokenKind::ID(String::new())),
+        }
+    }
+
+    fn get_ident_value(&mut self) -> Result<String> {
+        let ident = self.expect_ident()?;
+        match ident.kind() {
+            TokenKind::ID(val) => Ok(val.clone()),
+            _ => self.generate_unsuspected(ident),
+        }
     }
 
     /// COLLECT
@@ -67,6 +85,7 @@ impl Parser {
         // TODO: other statement like function
         match current.kind() {
             TokenKind::Let | TokenKind::Const => self.parse_var_declaration(),
+            TokenKind::Func => self.parse_function(),
             _ => Ok(Stmt::ExprStmt(self.parse_expr()?)),
         }
     }
@@ -74,17 +93,85 @@ impl Parser {
     fn parse_var_declaration(&mut self) -> Result<Stmt> {
         // variable declaration -> let|const foo = 0
         let is_constant = self.eat().unwrap().kind() == &TokenKind::Const;
-        let token = self.expect(TokenKind::ID(String::new()))?;
-        let TokenKind::ID(name) = token.kind() else { return self.generate_unsuspected(token) };
+        let name = self.get_ident_value()?;
 
         self.expect(TokenKind::Equal)?;
 
         let expr = self.parse_expr()?;
 
         Ok(Stmt::VarDeclaration {
-            name: name.clone(),
+            name,
             value: expr,
             constant: is_constant,
+        })
+    }
+
+    fn parse_function(&mut self) -> Result<Stmt> {
+        // function declaration -> func foo() return_type { ... }
+        //                       | func foo(arg1 type) { ... }
+        //                       | func foo() => expr
+
+        self.eat();
+        let name = self.get_ident_value()?;
+        let args = self.parse_args_definition()?;
+
+        let return_type = self.get_ident_value().ok();
+        let is_sort_func = self.expect(TokenKind::BigArrow).is_ok();
+
+        let mut body = Vec::new();
+        if is_sort_func {
+            body.push(Stmt::Return(self.parse_expr()?));
+        } else {
+            self.expect(TokenKind::OpenBrace)?;
+            loop {
+                if self.check(TokenKind::CloseBrace) {
+                    break;
+                }
+
+                body.push(self.parse_statement()?);
+                self.expect(TokenKind::Semicolon)?;
+            }
+            self.expect(TokenKind::CloseBrace)?;
+        }
+
+        Ok(Stmt::FunctionDefinition {
+            name,
+            args,
+            return_type,
+            body: Vec::new(),
+        })
+    }
+
+    fn parse_tuple_of<T, F>(&mut self, callback: F) -> Result<Vec<T>>
+    where
+        F: Fn(&mut Self) -> Result<T>,
+    {
+        let mut args = Vec::new();
+        let mut first = true;
+        self.expect(TokenKind::OpenParen)?;
+        loop {
+            if self.check(TokenKind::CloseParen) {
+                break;
+            }
+            if !mem::replace(&mut first, false) {
+                self.expect(TokenKind::Comma)?;
+            }
+
+            args.push(callback(self)?);
+
+            if !self.check(TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect(TokenKind::CloseParen)?;
+        Ok(args)
+    }
+
+    fn parse_args_definition(&mut self) -> Result<Vec<(String, String)>> {
+        self.parse_tuple_of(|parser| {
+            let arg = parser.get_ident_value()?;
+            let r#type = parser.get_ident_value()?;
+            Ok((arg, r#type))
         })
     }
 
@@ -95,16 +182,16 @@ impl Parser {
         loop {
             match (first, self.check(TokenKind::Else)) {
                 (true, _) => (),
-                (false, Err(_)) => break,
-                (false, Ok(())) => {
+                (false, false) => break,
+                (false, true) => {
                     self.eat();
                 }
             };
 
             let condition = match (first, self.check(TokenKind::If)) {
                 (true, _) => Some(self.parse_expr()?),
-                (false, Err(_)) => None,
-                (false, Ok(())) => {
+                (false, false) => None,
+                (false, true) => {
                     self.eat();
                     Some(self.parse_expr()?)
                 }
@@ -125,9 +212,9 @@ impl Parser {
     }
 
     /// Expression parsing orders of precedence
-    /// ❌ Assignment
+    /// ✅ Assignment
     /// ❌ Member
-    /// ❌ Function call
+    /// ✅ Function call
     /// ✅ Logical operator
     /// ✅ Comparison
     /// ✅ Additive
@@ -169,16 +256,38 @@ impl Parser {
     );
 
     fn parse_assignment(&mut self) -> Result<Expr> {
-        let left = self.parse_logical_expr()?;
+        let left = self.parse_call_member_expr()?;
 
-        Ok(match self.check(TokenKind::Equals) {
-            Ok(()) => {
-                self.eat();
-                let value = self.parse_logical_expr()?;
-                Expr::Assign(Box::new(left), Box::new(value))
-            }
-            _ => left,
+        Ok(if self.check(TokenKind::Equals) {
+            self.eat();
+            let value = self.parse_call_member_expr()?;
+            Expr::Assign(Box::new(left), Box::new(value))
+        } else {
+            left
         })
+    }
+
+    fn parse_call_member_expr(&mut self) -> Result<Expr> {
+        let member = self.parse_logical_expr()?;
+
+        if self.check(TokenKind::OpenParen) {
+            self.parse_call_expr(member)
+        } else {
+            Ok(member)
+        }
+    }
+
+    fn parse_call_expr(&mut self, caller: Expr) -> Result<Expr> {
+        let expr = Expr::Call(
+            Box::new(caller),
+            self.parse_tuple_of(|parser| parser.parse_expr())?,
+        );
+
+        if self.check(TokenKind::OpenParen) {
+            self.parse_call_expr(expr)
+        } else {
+            Ok(expr)
+        }
     }
 
     fn parse_unary_expr(&mut self) -> Result<Expr> {
