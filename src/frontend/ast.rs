@@ -1,3 +1,7 @@
+use crate::errors::{Error, ErrorKind, Result};
+
+use super::token::{Token, TokenKind};
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Op {
     And,
@@ -18,6 +22,32 @@ pub enum Op {
     QuotDiv,
     In,
     Dot,
+}
+
+impl TryFrom<Token> for Op {
+    type Error = Error;
+
+    fn try_from(value: Token) -> Result<Self> {
+        match value.kind() {
+            &TokenKind::And => Ok(Op::And),
+            &TokenKind::Or => Ok(Op::Or),
+            &TokenKind::Amp => Ok(Op::BineryAnd),
+            &TokenKind::Pipe => Ok(Op::BineryOr),
+            &TokenKind::Equals => Ok(Op::Equals),
+            &TokenKind::NotEqual => Ok(Op::NotEquals),
+            &TokenKind::Greater => Ok(Op::GreaterThan),
+            &TokenKind::GreaterEqual => Ok(Op::GreaterEquals),
+            &TokenKind::Less => Ok(Op::LessThan),
+            &TokenKind::LessEqual => Ok(Op::LessEquals),
+            &TokenKind::Plus => Ok(Op::Add),
+            &TokenKind::Minus => Ok(Op::Subtract),
+            &TokenKind::Star => Ok(Op::Multiply),
+            &TokenKind::Slash => Ok(Op::Divide),
+            &TokenKind::Percent => Ok(Op::ModDiv),
+            &TokenKind::Colon => Ok(Op::QuotDiv),
+            _ => Err(Error::from_kind(ErrorKind::UnsuspectedToken(value))),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -7,7 +7,7 @@ use core::mem;
 use std::collections::VecDeque;
 
 use super::{
-    ast::{Expr, Op, Stmt, UnaryOp},
+    ast::{Expr, Stmt, UnaryOp},
     lexer::Lexer,
     token::{Token, TokenKind},
 };
@@ -24,13 +24,17 @@ impl Parser {
         parser.parse_program()
     }
 
-    fn check(&self, token_kind: TokenKind) -> bool {
-        match self.at(0) {
+    fn check_index(&self, index: usize, token_kind: TokenKind) -> bool {
+        match self.at(index) {
             Some(token) if mem::discriminant(token.kind()) == mem::discriminant(&token_kind) => {
                 true
             }
             _ => false,
         }
+    }
+
+    fn check(&self, token_kind: TokenKind) -> bool {
+        self.check_index(0, token_kind)
     }
 
     fn at(&self, index: usize) -> Option<&Token> {
@@ -227,31 +231,31 @@ impl Parser {
 
     parse_op_expr!(
         fn parse_logical_expr from parse_comparison_expr {
-            TokenKind::And => Op::And,
-            TokenKind::Or => Op::Or,
-            TokenKind::Amp => Op::BineryAnd,
-            TokenKind::Pipe => Op::BineryOr,
+            TokenKind::And,
+            TokenKind::Or,
+            TokenKind::Amp,
+            TokenKind::Pipe,
         }
 
         fn parse_comparison_expr from parse_additive_expr {
-            TokenKind::Equals => Op::Equals,
-            TokenKind::NotEqual => Op::NotEquals,
-            TokenKind::Greater => Op::GreaterThan,
-            TokenKind::GreaterEqual => Op::GreaterEquals,
-            TokenKind::Less => Op::LessThan,
-            TokenKind::LessEqual => Op::LessEquals,
+            TokenKind::Equals,
+            TokenKind::NotEqual,
+            TokenKind::Greater,
+            TokenKind::GreaterEqual,
+            TokenKind::Less,
+            TokenKind::LessEqual,
         }
 
         fn parse_additive_expr from parse_multiplicative_expr {
-            TokenKind::Plus => Op::Add,
-            TokenKind::Minus => Op::Subtract,
+            TokenKind::Plus,
+            TokenKind::Minus,
         }
 
         fn parse_multiplicative_expr from parse_unary_expr {
-            TokenKind::Star => Op::Multiply,
-            TokenKind::Slash => Op::Divide,
-            TokenKind::Percent => Op::ModDiv,
-            TokenKind::Colon => Op::QuotDiv,
+            TokenKind::Star,
+            TokenKind::Slash,
+            TokenKind::Percent,
+            TokenKind::Colon,
         }
     );
 
@@ -262,6 +266,16 @@ impl Parser {
             self.eat();
             let value = self.parse_call_member_expr()?;
             Expr::Assign(Box::new(left), Box::new(value))
+        } else if self.check_index(1, TokenKind::Equal) {
+            let left = Box::new(left);
+            let op = self.eat().unwrap().try_into()?;
+            self.eat();
+            let value = self.parse_call_member_expr()?;
+
+            Expr::Assign(
+                left.clone(),
+                Box::new(Expr::Op(op, left.clone(), Box::new(value))),
+            )
         } else {
             left
         })
@@ -503,19 +517,19 @@ mod tests {
             ))]))
         );
 
-        // let ast = Parser::parse("a += 1;");
+        let ast = Parser::parse("a += 1;");
 
-        // assert_eq!(
-        //     ast,
-        //     Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Assign(
-        //         Box::new(Expr::Identifier("a".into())),
-        //         Box::new(Expr::Op(
-        //             Op::Add,
-        //             Box::new(Expr::Identifier("a".into())),
-        //             Box::new(Expr::NumberLiteral(1.))
-        //         )),
-        //     ))]))
-        // );
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Assign(
+                Box::new(Expr::Identifier("a".into())),
+                Box::new(Expr::Op(
+                    Op::Add,
+                    Box::new(Expr::Identifier("a".into())),
+                    Box::new(Expr::NumberLiteral(1.))
+                )),
+            ))]))
+        );
     }
 
     #[test]
