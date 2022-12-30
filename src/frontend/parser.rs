@@ -92,6 +92,10 @@ impl Parser {
         match current.kind() {
             TokenKind::Let | TokenKind::Const => self.parse_var_declaration(),
             TokenKind::Func => self.parse_function(),
+            TokenKind::Return => {
+                self.eat();
+                Ok(Stmt::Return(self.parse_expr()?))
+            }
             _ => Ok(Stmt::ExprStmt(self.parse_expr()?)),
         }
     }

@@ -1,10 +1,11 @@
-use frontend::parser::Parser;
+use runtime::evaluator::Evaluator;
 
 mod errors;
 mod frontend;
+mod runtime;
 
 fn main() {
-    let parser = Parser::parse("if 2 1 else if 4 3;");
+    let value = Evaluator::evaluate("let a = 1; a");
 
-    println!("{:#?}", parser);
+    println!("{:#?}", value);
 }

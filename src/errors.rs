@@ -14,7 +14,9 @@ pub enum ErrorKind {
         expected: TokenKind,
     },
     UnsuspectedToken(Token),
-    EOF,
+
+    /// RUNTIME
+    UnknownVariable(String),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
