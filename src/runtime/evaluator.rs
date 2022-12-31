@@ -94,10 +94,17 @@ impl Evaluator {
                     Op::Divide => left.try_div(right)?,
                     Op::ModDiv => left.try_mod_div(right)?,
                     Op::QuotDiv => left.try_quot_div(right)?,
+                    Op::Equals => left.eq(right),
+                    Op::NotEquals => left.ne(right),
+                    Op::GreaterThan => left.gt(right),
+                    Op::GreaterEquals => left.ge(right),
+                    Op::LessThan => left.lt(right),
+                    Op::LessEquals => left.le(right),
                     _ => unimplemented!(),
                 })))
             }
             Expr::Call(calle, params) => {
+                println!("{calle:?}");
                 let funcname = match *calle {
                     Expr::Identifier(symbol) => symbol,
                     _ => panic!(),
