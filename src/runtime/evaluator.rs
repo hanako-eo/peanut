@@ -9,10 +9,11 @@ use crate::{
         ast::{Expr, Op, Stmt},
         parser::Parser,
     },
+    runtime::environment::EnvState,
 };
 
 use super::{
-    environment::{self, Environment},
+    environment::{self, EnvOrigin, Environment},
     value::{RuntimeValue, Value},
 };
 
@@ -21,7 +22,7 @@ pub struct Evaluator;
 impl Evaluator {
     pub fn evaluate(source: &str) -> Result<RuntimeValue> {
         let program = Parser::parse(source)?;
-        let env = Rc::new(RefCell::new(Environment::new()));
+        let env = Environment::new(EnvOrigin::Global);
         let mut evaluator = Self;
 
         evaluator.evaluate_stmt(program, env)
@@ -45,6 +46,21 @@ impl Evaluator {
                 self.evaluate_expr(value, env.clone())?,
                 constant,
             ),
+            Stmt::FunctionDefinition {
+                name,
+                return_type: _, // TODO: types
+                args,
+                body,
+            } => {
+                environment::declare_function(env.clone(), name, args, body);
+                Ok(Value::default_rt())
+            }
+            Stmt::Return(expr) => {
+                let value = self.evaluate_expr(expr, env.clone())?;
+                let mut ref_env = env.borrow_mut();
+                ref_env.state = EnvState::Return(value);
+                Ok(Value::default_rt())
+            }
             Stmt::ExprStmt(expr) => self.evaluate_expr(expr, env.clone()),
             _ => Ok(Value::default_rt()),
         }
@@ -55,8 +71,8 @@ impl Evaluator {
             Expr::Identifier(varname) => environment::lookup_var(env, varname),
             Expr::NumberLiteral(n) => Ok(Rc::new(RefCell::new(Value::Number(n)))),
             Expr::StringLiteral(str) => Ok(Rc::new(RefCell::new(Value::String(str)))),
-            Expr::Assign(id, expr) => {
-                let varname = match *id {
+            Expr::Assign(assigne, expr) => {
+                let varname = match *assigne {
                     Expr::Identifier(symbol) => symbol,
                     _ => panic!(),
                 };
@@ -81,10 +97,58 @@ impl Evaluator {
                     _ => unimplemented!(),
                 })))
             }
+            Expr::Call(calle, params) => {
+                let funcname = match *calle {
+                    Expr::Identifier(symbol) => symbol,
+                    _ => panic!(),
+                };
+
+                let values: Vec<_> = params
+                    .iter()
+                    .map(|expr| self.evaluate_expr(expr.clone(), env.clone()))
+                    .collect();
+
+                let (args, body) = environment::lookup_function(env.clone(), funcname)?;
+
+                assert_eq!(values.len(), args.len());
+
+                let func_env = Environment::with_parent(Rc::downgrade(&env), EnvOrigin::Function);
+
+                for (i, expr) in values.iter().enumerate() {
+                    let value = match expr.as_ref() {
+                        Ok(v) => v.clone(),
+                        Err(err) => return Err(err.clone()),
+                    };
+
+                    environment::declare_var(
+                        func_env.clone(),
+                        args.get(i).unwrap().0.clone(),
+                        value,
+                        false,
+                    )?;
+                }
+
+                for stmt in body {
+                    self.evaluate_stmt(stmt, func_env.clone())?;
+                    let func_env = func_env.borrow();
+                    if let EnvState::Return(_) = func_env.state {
+                        break;
+                    }
+                }
+                let func_env = func_env.borrow();
+                Ok(match &func_env.state {
+                    EnvState::Return(value) => value.clone(),
+                    _ => Value::default_rt(),
+                })
+            }
             Expr::Block(list) => {
                 let mut value = Value::default_rt();
                 for stmt in list {
-                    value = self.evaluate_stmt(stmt, env.clone())?
+                    value = self.evaluate_stmt(stmt, env.clone())?;
+                    let env = env.borrow();
+                    if let EnvState::Return(_) = env.state {
+                        break;
+                    }
                 }
                 Ok(value)
             }
