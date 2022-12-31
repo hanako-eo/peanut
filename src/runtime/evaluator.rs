@@ -141,6 +141,27 @@ impl Evaluator {
                     _ => Value::default_rt(),
                 })
             }
+            Expr::If(conditions) => {
+                let mut value = Value::default_rt();
+                for (condition, expr) in conditions {
+                    let result =
+                        condition.map(|condition| self.evaluate_expr(condition, env.clone()));
+
+                    match result {
+                        Some(result) => {
+                            if result?.borrow().is_truthy() {
+                                value = self.evaluate_expr(*expr, env)?;
+                                break;
+                            }
+                        }
+                        None => {
+                            value = self.evaluate_expr(*expr, env)?;
+                            break;
+                        }
+                    }
+                }
+                Ok(value)
+            }
             Expr::Block(list) => {
                 let mut value = Value::default_rt();
                 for stmt in list {

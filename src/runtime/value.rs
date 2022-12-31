@@ -21,6 +21,14 @@ impl Value {
         Rc::new(RefCell::new(Value::default()))
     }
 
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Number(n) if n != &0. => true,
+            Value::String(s) if !s.is_empty() => true,
+            _ => false,
+        }
+    }
+
     pub fn add(&self, rhs: &Self) -> Self {
         match (self, rhs) {
             (&Value::Number(left), &Value::Number(right)) => Value::Number(left + right),
