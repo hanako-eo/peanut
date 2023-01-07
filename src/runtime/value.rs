@@ -36,10 +36,35 @@ impl Value {
 
     pub fn is_truthy(&self) -> bool {
         match self {
-            Value::Number(n) if n != &0. => true,
-            Value::String(s) if !s.is_empty() => true,
-            Value::True => true,
-            _ => false,
+            Value::Number(n) if n == &0. => false,
+            Value::String(s) if s.is_empty() => false,
+            Value::False => false,
+            Value::Null => false,
+            _ => true,
+        }
+    }
+
+    pub fn not(&self) -> Self {
+        match self.is_truthy() {
+            true => Value::False,
+            false => Value::True,
+        }
+    }
+
+    pub fn parse(&self) -> Self {
+        Value::Number(match self {
+            Value::Number(n) => *n,
+            Value::String(s) => s.parse().unwrap_or(0.),
+            Value::Null | Value::False => 0.,
+            Value::True => 1.,
+            _ => unimplemented!(),
+        })
+    }
+
+    pub fn negate(&self) -> Self {
+        match self.parse() {
+            Value::Number(n) => Value::Number(-n),
+            _ => unreachable!(),
         }
     }
 

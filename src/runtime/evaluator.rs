@@ -6,7 +6,7 @@ use std::{
 use crate::{
     errors::Result,
     frontend::{
-        ast::{Expr, Op, Stmt},
+        ast::{Expr, Op, Stmt, UnaryOp},
         parser::Parser,
     },
     runtime::environment::EnvState,
@@ -89,8 +89,8 @@ impl Evaluator {
                 let lhs = self.evaluate_expr(*lhs, env.clone())?;
                 let rhs = self.evaluate_expr(*rhs, env.clone())?;
 
-                let left = Ref::leak(lhs.borrow());
-                let right = Ref::leak(rhs.borrow());
+                let left = &*lhs.borrow();
+                let right = &*rhs.borrow();
 
                 Ok(Rc::new(RefCell::new(match op {
                     Op::Add => left.add(right),
@@ -106,6 +106,16 @@ impl Evaluator {
                     Op::LessThan => left.lt(right),
                     Op::LessEquals => left.le(right),
                     _ => unimplemented!(),
+                })))
+            }
+            Expr::UnaryOp(op, expr) => {
+                let value = self.evaluate_expr(*expr, env.clone())?;
+                let value = &*value.borrow();
+                Ok(Rc::new(RefCell::new(match op {
+                    UnaryOp::Not => value.not(),
+                    UnaryOp::Positive => value.parse(),
+                    UnaryOp::Negate => value.negate(),
+                    UnaryOp::None => unreachable!(),
                 })))
             }
             Expr::Call(calle, params) => {
