@@ -52,7 +52,12 @@ impl Evaluator {
                 args,
                 body,
             } => {
-                environment::declare_function(env.clone(), name, args, body);
+                environment::declare_var(
+                    env.clone(),
+                    name,
+                    Rc::new(RefCell::new(Value::Function(args, body))),
+                    true,
+                );
                 Ok(Value::default_rt())
             }
             Stmt::Return(expr) => {
@@ -104,7 +109,6 @@ impl Evaluator {
                 })))
             }
             Expr::Call(calle, params) => {
-                println!("{calle:?}");
                 let funcname = match *calle {
                     Expr::Identifier(symbol) => symbol,
                     _ => panic!(),
@@ -115,7 +119,11 @@ impl Evaluator {
                     .map(|expr| self.evaluate_expr(expr.clone(), env.clone()))
                     .collect();
 
-                let (args, body) = environment::lookup_function(env.clone(), funcname)?;
+                let value = environment::lookup_var(env.clone(), funcname)?;
+                let (args, body) = match value.borrow().to_owned() {
+                    Value::Function(args, body) => (args, body),
+                    _ => panic!(),
+                };
 
                 assert_eq!(values.len(), args.len());
 

@@ -3,7 +3,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::errors::Result;
+use crate::{errors::Result, frontend::ast::Stmt};
 
 pub type RuntimeValue = Rc<RefCell<Value>>;
 pub type EvaluateValue = Weak<RefCell<Value>>;
@@ -15,6 +15,10 @@ pub enum Value {
 
     Number(f64),
     String(String),
+
+    Function(/*args*/ Vec<(String, String)>, /*body*/ Vec<Stmt>),
+    NativeCallback(Box<fn(Vec<Value>) -> Value>),
+
     #[default]
     Null,
 }
