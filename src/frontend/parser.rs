@@ -235,7 +235,7 @@ impl Parser {
     /// ✅ Unary
     /// ✅ Primary
     fn parse_expr(&mut self) -> Result<Expr> {
-        self.parse_assignment()
+        self.parse_logical_expr()
     }
 
     parse_op_expr!(
@@ -291,7 +291,7 @@ impl Parser {
     }
 
     fn parse_call_member_expr(&mut self) -> Result<Expr> {
-        let member = self.parse_logical_expr()?;
+        let member = self.parse_primary_expr()?;
 
         if self.check(TokenKind::OpenParen) {
             self.parse_call_expr(member)
@@ -322,7 +322,7 @@ impl Parser {
         };
 
         match unary {
-            UnaryOp::None => self.parse_primary_expr(),
+            UnaryOp::None => self.parse_assignment(),
             _ => {
                 self.eat();
                 Ok(Expr::UnaryOp(unary, Box::new(self.parse_unary_expr()?)))
@@ -570,6 +570,50 @@ mod tests {
             Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Call(
                 Box::new(Expr::Call(Box::new(Expr::Identifier("a".into())), vec![],)),
                 vec![Expr::NumberLiteral(1.)],
+            ))]))
+        );
+    }
+
+    #[test]
+    fn arithmetic_call() {
+        let ast = Parser::parse("a(n-1) + a(n-2)");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::Op(
+                Op::Add,
+                Box::new(Expr::Call(
+                    Box::new(Expr::Identifier("a".into())),
+                    vec![Expr::Op(
+                        Op::Subtract,
+                        Box::new(Expr::Identifier("n".into())),
+                        Box::new(Expr::NumberLiteral(1.0))
+                    )]
+                )),
+                Box::new(Expr::Call(
+                    Box::new(Expr::Identifier("a".into())),
+                    vec![Expr::Op(
+                        Op::Subtract,
+                        Box::new(Expr::Identifier("n".into())),
+                        Box::new(Expr::NumberLiteral(2.0))
+                    )]
+                ))
+            ))]))
+        );
+    }
+
+    #[test]
+    fn unary_call() {
+        let ast = Parser::parse("-a(1)");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::UnaryOp(
+                UnaryOp::Negate,
+                Box::new(Expr::Call(
+                    Box::new(Expr::Identifier("a".into())),
+                    vec![Expr::NumberLiteral(1.0)]
+                )),
             ))]))
         );
     }
