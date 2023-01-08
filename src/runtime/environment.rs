@@ -8,15 +8,17 @@ use crate::errors::{Error, ErrorKind, Result};
 
 use super::value::RuntimeValue;
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum EnvOrigin {
     Global,
     Block,
     Function,
+    Loop,
 }
 
 pub enum EnvState {
     Continue,
-    Break,
+    Break(Option<RuntimeValue>),
     Return(RuntimeValue),
     Yield(RuntimeValue),
     None,
@@ -101,5 +103,17 @@ pub fn resolve_var(
         (false, None) => Err(Error::from_kind(ErrorKind::UnknownVariable(
             varname.clone(),
         ))),
+    }
+}
+
+pub fn resolve_with_origin(
+    env: Rc<RefCell<Environment>>,
+    origin: EnvOrigin,
+) -> Result<Rc<RefCell<Environment>>> {
+    let ref_env = env.borrow();
+    match (ref_env.origin == origin, ref_env.parent.upgrade()) {
+        (true, _) => Ok(env.clone()),
+        (false, Some(env)) => resolve_with_origin(env, origin),
+        (false, None) => Err(Error::from_kind(ErrorKind::InvalidContext(origin))),
     }
 }

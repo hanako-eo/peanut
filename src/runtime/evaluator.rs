@@ -36,6 +36,12 @@ impl Evaluator {
         );
         environment::declare_var(
             env.clone(),
+            "null".into(),
+            Rc::new(RefCell::new(Value::Null)),
+            true,
+        );
+        environment::declare_var(
+            env.clone(),
             "print".into(),
             Rc::new(RefCell::new(Value::NativeCallback(Box::new(
                 |params, _env| {
@@ -122,6 +128,8 @@ impl Evaluator {
             }
             Expr::Return(expr) => {
                 let value = self.evaluate_expr(*expr, env.clone())?;
+
+                let env = environment::resolve_with_origin(env, EnvOrigin::Function)?;
                 let mut ref_env = env.borrow_mut();
                 ref_env.state = EnvState::Return(value);
                 Ok(Value::default_rt())
@@ -129,7 +137,24 @@ impl Evaluator {
             Expr::Yield(expr) => {
                 let value = self.evaluate_expr(*expr, env.clone())?;
                 let mut ref_env = env.borrow_mut();
-                ref_env.state = EnvState::Yield(value.clone());
+                ref_env.state = EnvState::Yield(value);
+                Ok(Value::default_rt())
+            }
+            Expr::Break(expr) => {
+                let value = match expr {
+                    Some(expr) => Some(self.evaluate_expr(*expr, env.clone())?),
+                    None => None,
+                };
+
+                let env = environment::resolve_with_origin(env, EnvOrigin::Loop)?;
+                let mut ref_env = env.borrow_mut();
+                ref_env.state = EnvState::Break(value);
+                Ok(Value::default_rt())
+            }
+            Expr::Continue => {
+                let env = environment::resolve_with_origin(env, EnvOrigin::Loop)?;
+                let mut ref_env = env.borrow_mut();
+                ref_env.state = EnvState::Continue;
                 Ok(Value::default_rt())
             }
             Expr::Op(op, lhs, rhs) => self.evaluate_op(op, *lhs, *rhs, env.clone()),
@@ -217,6 +242,24 @@ impl Evaluator {
                     }
                 }
                 Ok(value)
+            }
+            Expr::While(condition, body) => {
+                let while_env = Environment::with_parent(Rc::downgrade(&env), EnvOrigin::Loop);
+                let value = loop {
+                    let value = self.evaluate_expr(*condition.clone(), env.clone())?;
+                    let value = value.borrow();
+                    if !value.is_truthy() {
+                        break None;
+                    }
+
+                    self.evaluate_expr(*body.clone(), while_env.clone())?;
+                    let while_env = while_env.borrow();
+                    match &while_env.state {
+                        EnvState::Break(value) => break value.clone(),
+                        _ => continue,
+                    }
+                };
+                Ok(value.unwrap_or(Value::default_rt()))
             }
             Expr::Block(list) => {
                 let mut value = Value::default_rt();

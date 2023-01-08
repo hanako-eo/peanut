@@ -1,4 +1,7 @@
-use crate::frontend::token::{Token, TokenKind};
+use crate::{
+    frontend::token::{Token, TokenKind},
+    runtime::environment::EnvOrigin,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorKind {
@@ -17,6 +20,7 @@ pub enum ErrorKind {
 
     /// RUNTIME
     UnknownVariable(String),
+    InvalidContext(EnvOrigin),
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
