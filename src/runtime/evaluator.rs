@@ -22,6 +22,48 @@ impl Evaluator {
         let env = Environment::new(EnvOrigin::Global);
         let mut evaluator = Self;
 
+        environment::declare_var(
+            env.clone(),
+            "true".into(),
+            Rc::new(RefCell::new(Value::True)),
+            true,
+        );
+        environment::declare_var(
+            env.clone(),
+            "false".into(),
+            Rc::new(RefCell::new(Value::False)),
+            true,
+        );
+        environment::declare_var(
+            env.clone(),
+            "print".into(),
+            Rc::new(RefCell::new(Value::NativeCallback(Box::new(
+                |params, _env| {
+                    for param in params {
+                        print!("{}", param.borrow());
+                    }
+                    Value::Null
+                },
+            )))),
+            true,
+        );
+        environment::declare_var(
+            env.clone(),
+            "println".into(),
+            Rc::new(RefCell::new(Value::NativeCallback(Box::new(
+                |params, env| {
+                    let value = environment::lookup_var(env.clone(), "print".into()).unwrap();
+                    match value.borrow().to_owned() {
+                        Value::NativeCallback(print) => print(params, env.clone()),
+                        _ => unreachable!(),
+                    };
+                    print!("\n");
+                    Value::Null
+                },
+            )))),
+            true,
+        );
+
         evaluator.evaluate_stmt(program, env)
     }
     fn evaluate_stmt(&mut self, stmt: Stmt, env: Rc<RefCell<Environment>>) -> Result<RuntimeValue> {
@@ -137,6 +179,13 @@ impl Evaluator {
                 let value = environment::lookup_var(env.clone(), funcname)?;
                 let (args, body) = match value.borrow().to_owned() {
                     Value::Function(args, body) => (args, body),
+                    Value::NativeCallback(function) => {
+                        let mut params = Vec::new();
+                        for value in values {
+                            params.push(value?)
+                        }
+                        return Ok(Rc::new(RefCell::new(function(params, env.clone()))));
+                    }
                     _ => panic!(),
                 };
 

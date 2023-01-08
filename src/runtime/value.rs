@@ -1,9 +1,8 @@
-use std::{
-    cell::RefCell,
-    rc::{Rc, Weak},
-};
+use std::{cell::RefCell, fmt::Display, ptr::addr_of, rc::Rc};
 
 use crate::{errors::Result, frontend::ast::Stmt};
+
+use super::environment::Environment;
 
 pub type RuntimeValue = Rc<RefCell<Value>>;
 
@@ -16,7 +15,7 @@ pub enum Value {
     String(String),
 
     Function(/*args*/ Vec<(String, String)>, /*body*/ Vec<Stmt>),
-    NativeCallback(Box<fn(Vec<Value>) -> Value>),
+    NativeCallback(Box<fn(Vec<Rc<RefCell<Value>>>, Rc<RefCell<Environment>>) -> Value>),
 
     #[default]
     Null,
@@ -158,6 +157,19 @@ impl Value {
                 Ok(Value::Number(((left as i64) / (right as i64)) as f64))
             }
             _ => unimplemented!(),
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Null => write!(f, "null"),
+            Value::True => write!(f, "true"),
+            Value::False => write!(f, "false"),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Number(n) => write!(f, "{}", n),
+            _ => write!(f, "<function {:?}>", addr_of!(self)),
         }
     }
 }
