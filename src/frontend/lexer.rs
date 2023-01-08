@@ -271,6 +271,8 @@ impl<'i> Iterator for Lexer<'i> {
                             "in" => TokenKind::In,
                             "return" => TokenKind::Return,
                             "yield" => TokenKind::Yield,
+                            "break" => TokenKind::Break,
+                            "continue" => TokenKind::Continue,
 
                             id => TokenKind::ID(id.into()),
                         },

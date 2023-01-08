@@ -46,6 +46,8 @@ pub enum TokenKind {
     Func,
     Return,
     Yield,
+    Break,
+    Continue,
 }
 
 #[derive(Clone, Debug, PartialEq)]

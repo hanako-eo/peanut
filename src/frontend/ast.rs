@@ -67,9 +67,12 @@ pub enum Expr {
     Call(Box<Expr>, Vec<Expr>),
     Block(Vec<Stmt>),
     If(Vec<(Option<Expr>, Box<Expr>)>),
+    While(Box<Expr>, Box<Expr>),
 
     Return(Box<Expr>),
     Yield(Box<Expr>),
+    Break(Option<Box<Expr>>),
+    Continue,
 
     UnaryOp(UnaryOp, Box<Expr>),
     Op(Op, Box<Expr>, Box<Expr>),
@@ -90,7 +93,6 @@ pub enum Stmt {
         value: Expr,
         constant: bool,
     },
-    While(Expr, Vec<Stmt>),
     For(String, Expr, Vec<Stmt>),
 
     None,

@@ -1,5 +1,3 @@
-#![feature(cell_leak)]
-
 use std::process::exit;
 
 use runtime::evaluator::Evaluator;

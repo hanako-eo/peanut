@@ -228,6 +228,12 @@ impl Parser {
         Ok(Expr::If(conditions))
     }
 
+    fn parse_while_expr(&mut self) -> Result<Expr> {
+        let condition = self.parse_expr()?;
+        let body = self.parse_expr()?;
+        Ok(Expr::While(Box::new(condition), Box::new(body)))
+    }
+
     /// Expression parsing orders of precedence
     /// ✅ Assignment
     /// ❌ Member
@@ -346,6 +352,9 @@ impl Parser {
                 expr
             }
             TokenKind::If => self.parse_if_expr()?,
+            TokenKind::While => self.parse_while_expr()?,
+            TokenKind::Break => Expr::Break(None),
+            TokenKind::Continue => Expr::Continue,
             TokenKind::OpenBrace => {
                 let mut body = Vec::new();
                 loop {
@@ -489,6 +498,19 @@ mod tests {
                 args: vec![("a".into(), "string".into())],
                 body: Vec::new(),
             }]))
+        );
+    }
+
+    #[test]
+    fn while_loop() {
+        let ast = Parser::parse("while 2 1");
+
+        assert_eq!(
+            ast,
+            Ok(Stmt::Program(vec![Stmt::ExprStmt(Expr::While(
+                Box::new(Expr::NumberLiteral(2.)),
+                Box::new(Expr::NumberLiteral(1.))
+            ))]))
         );
     }
 
