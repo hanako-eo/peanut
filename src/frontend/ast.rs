@@ -55,8 +55,6 @@ pub enum UnaryOp {
     Not,
     Negate,
     Positive,
-
-    None,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -67,20 +65,19 @@ pub enum Expr {
 
     Assign(Box<Expr>, Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
-    Closure(Vec<String>, Vec<Stmt>),
     Block(Vec<Stmt>),
     If(Vec<(Option<Expr>, Box<Expr>)>),
 
+    Return(Box<Expr>),
+    Yield(Box<Expr>),
+
     UnaryOp(UnaryOp, Box<Expr>),
     Op(Op, Box<Expr>, Box<Expr>),
-
-    None,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Stmt {
     Program(Vec<Stmt>),
-    Return(Expr),
     ExprStmt(Expr),
     FunctionDefinition {
         name: String,

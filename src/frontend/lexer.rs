@@ -270,6 +270,7 @@ impl<'i> Iterator for Lexer<'i> {
                             "for" => TokenKind::For,
                             "in" => TokenKind::In,
                             "return" => TokenKind::Return,
+                            "yield" => TokenKind::Yield,
 
                             id => TokenKind::ID(id.into()),
                         },

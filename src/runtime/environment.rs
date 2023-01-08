@@ -4,15 +4,13 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::{
-    errors::{Error, ErrorKind, Result},
-    frontend::ast::Stmt,
-};
+use crate::errors::{Error, ErrorKind, Result};
 
-use super::value::{EvaluateValue, RuntimeValue};
+use super::value::RuntimeValue;
 
 pub enum EnvOrigin {
     Global,
+    Block,
     Function,
 }
 
@@ -20,6 +18,7 @@ pub enum EnvState {
     Continue,
     Break,
     Return(RuntimeValue),
+    Yield(RuntimeValue),
     None,
 }
 
@@ -58,7 +57,7 @@ pub fn declare_var(
     varname: String,
     value: RuntimeValue,
     constant: bool,
-) -> Result<RuntimeValue> {
+) {
     let mut env = env.borrow_mut();
     if env.constants.contains(&varname) {
         env.constants.remove(&varname);
@@ -68,7 +67,6 @@ pub fn declare_var(
     if constant {
         env.constants.insert(varname);
     }
-    Ok(value)
 }
 
 pub fn assign_var(

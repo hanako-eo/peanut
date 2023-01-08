@@ -94,7 +94,11 @@ impl Parser {
             TokenKind::Func => self.parse_function(),
             TokenKind::Return => {
                 self.eat();
-                Ok(Stmt::Return(self.parse_expr()?))
+                Ok(Stmt::ExprStmt(Expr::Return(Box::new(self.parse_expr()?))))
+            }
+            TokenKind::Yield => {
+                self.eat();
+                Ok(Stmt::ExprStmt(Expr::Yield(Box::new(self.parse_expr()?))))
             }
             _ => Ok(Stmt::ExprStmt(self.parse_expr()?)),
         }
@@ -130,7 +134,7 @@ impl Parser {
 
         let mut body = Vec::new();
         if is_sort_func {
-            body.push(Stmt::Return(self.parse_expr()?));
+            body.push(Stmt::ExprStmt(Expr::Return(Box::new(self.parse_expr()?))));
         } else {
             self.expect(TokenKind::OpenBrace)?;
             loop {
@@ -315,15 +319,15 @@ impl Parser {
 
     fn parse_unary_expr(&mut self) -> Result<Expr> {
         let unary = match self.at(0).unwrap().kind() {
-            &TokenKind::Plus => UnaryOp::Positive,
-            &TokenKind::Minus => UnaryOp::Negate,
-            &TokenKind::Not => UnaryOp::Not,
-            _ => UnaryOp::None,
+            &TokenKind::Plus => Some(UnaryOp::Positive),
+            &TokenKind::Minus => Some(UnaryOp::Negate),
+            &TokenKind::Not => Some(UnaryOp::Not),
+            _ => None,
         };
 
         match unary {
-            UnaryOp::None => self.parse_assignment(),
-            _ => {
+            None => self.parse_assignment(),
+            Some(unary) => {
                 self.eat();
                 Ok(Expr::UnaryOp(unary, Box::new(self.parse_unary_expr()?)))
             }
@@ -342,6 +346,22 @@ impl Parser {
                 expr
             }
             TokenKind::If => self.parse_if_expr()?,
+            TokenKind::OpenBrace => {
+                let mut body = Vec::new();
+                loop {
+                    if self.check(TokenKind::CloseBrace) {
+                        break;
+                    }
+
+                    body.push(self.parse_statement()?);
+
+                    if self.check(TokenKind::Semicolon) {
+                        self.eat();
+                    }
+                }
+                self.expect(TokenKind::CloseBrace)?;
+                Expr::Block(body)
+            }
             _ => return self.generate_unsuspected(token),
         })
     }

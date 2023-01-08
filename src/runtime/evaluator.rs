@@ -1,7 +1,4 @@
-use std::{
-    cell::{Ref, RefCell},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     errors::Result,
@@ -40,12 +37,15 @@ impl Evaluator {
                 name,
                 value,
                 constant,
-            } => environment::declare_var(
-                env.clone(),
-                name,
-                self.evaluate_expr(value, env.clone())?,
-                constant,
-            ),
+            } => {
+                environment::declare_var(
+                    env.clone(),
+                    name,
+                    self.evaluate_expr(value, env.clone())?,
+                    constant,
+                );
+                Ok(Value::default_rt())
+            }
             Stmt::FunctionDefinition {
                 name,
                 return_type: _, // TODO: types
@@ -58,12 +58,6 @@ impl Evaluator {
                     Rc::new(RefCell::new(Value::Function(args, body))),
                     true,
                 );
-                Ok(Value::default_rt())
-            }
-            Stmt::Return(expr) => {
-                let value = self.evaluate_expr(expr, env.clone())?;
-                let mut ref_env = env.borrow_mut();
-                ref_env.state = EnvState::Return(value);
                 Ok(Value::default_rt())
             }
             Stmt::ExprStmt(expr) => self.evaluate_expr(expr, env.clone()),
@@ -83,6 +77,18 @@ impl Evaluator {
                 };
 
                 environment::assign_var(env.clone(), varname, self.evaluate_expr(*expr, env)?)
+            }
+            Expr::Return(expr) => {
+                let value = self.evaluate_expr(*expr, env.clone())?;
+                let mut ref_env = env.borrow_mut();
+                ref_env.state = EnvState::Return(value);
+                Ok(Value::default_rt())
+            }
+            Expr::Yield(expr) => {
+                let value = self.evaluate_expr(*expr, env.clone())?;
+                let mut ref_env = env.borrow_mut();
+                ref_env.state = EnvState::Yield(value.clone());
+                Ok(Value::default_rt())
             }
             Expr::Op(op, lhs, rhs) => {
                 // TODO: evaluate conditionals operators
@@ -115,7 +121,6 @@ impl Evaluator {
                     UnaryOp::Not => value.not(),
                     UnaryOp::Positive => value.parse(),
                     UnaryOp::Negate => value.negate(),
-                    UnaryOp::None => unreachable!(),
                 })))
             }
             Expr::Call(calle, params) => {
@@ -150,7 +155,7 @@ impl Evaluator {
                         args.get(i).unwrap().0.clone(),
                         value,
                         false,
-                    )?;
+                    );
                 }
 
                 for stmt in body {
@@ -189,16 +194,22 @@ impl Evaluator {
             }
             Expr::Block(list) => {
                 let mut value = Value::default_rt();
+                let block_env = Environment::with_parent(Rc::downgrade(&env), EnvOrigin::Block);
+
                 for stmt in list {
-                    value = self.evaluate_stmt(stmt, env.clone())?;
-                    let env = env.borrow();
-                    if let EnvState::Return(_) = env.state {
+                    value = self.evaluate_stmt(stmt, block_env.clone())?;
+                    let block_env = block_env.borrow();
+                    if let EnvState::Return(_) | EnvState::Yield(_) = block_env.state {
                         break;
                     }
                 }
-                Ok(value)
+
+                let block_env = block_env.borrow();
+                Ok(match &block_env.state {
+                    EnvState::Yield(value) => value.clone(),
+                    _ => value,
+                })
             }
-            _ => Ok(Value::default_rt()),
         }
     }
 }
