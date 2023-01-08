@@ -6,7 +6,6 @@ use std::{
 use crate::{errors::Result, frontend::ast::Stmt};
 
 pub type RuntimeValue = Rc<RefCell<Value>>;
-pub type EvaluateValue = Weak<RefCell<Value>>;
 
 #[derive(Default, Debug, PartialEq, Clone)]
 pub enum Value {
@@ -73,6 +72,8 @@ impl Value {
             (Value::Number(left), Value::Number(right)) => Value::bool(left == right),
             (Value::String(left), Value::String(right)) => Value::bool(left.len() == right.len()),
             (Value::Null, Value::Null) => Value::True,
+            (Value::True, Value::True) => Value::True,
+            (Value::False, Value::False) => Value::True,
             _ => Value::False,
         }
     }
