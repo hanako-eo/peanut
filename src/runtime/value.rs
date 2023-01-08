@@ -139,6 +139,23 @@ impl Value {
         }
     }
 
+    pub fn binery_and(&self, rhs: &Self) -> Self {
+        match (self, rhs) {
+            (&Value::Number(left), &Value::Number(right)) => {
+                Value::Number(((left as i64) & (right as i64)) as f64)
+            }
+            _ => unimplemented!(),
+        }
+    }
+    pub fn binery_or(&self, rhs: &Self) -> Self {
+        match (self, rhs) {
+            (&Value::Number(left), &Value::Number(right)) => {
+                Value::Number(((left as i64) | (right as i64)) as f64)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
     pub fn try_div(&self, rhs: &Self) -> Result<Self> {
         match (self, rhs) {
             (&Value::Number(left), &Value::Number(right)) => Ok(Value::Number(left / right)),

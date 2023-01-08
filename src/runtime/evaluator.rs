@@ -132,30 +132,7 @@ impl Evaluator {
                 ref_env.state = EnvState::Yield(value.clone());
                 Ok(Value::default_rt())
             }
-            Expr::Op(op, lhs, rhs) => {
-                // TODO: evaluate conditionals operators
-                let lhs = self.evaluate_expr(*lhs, env.clone())?;
-                let rhs = self.evaluate_expr(*rhs, env.clone())?;
-
-                let left = &*lhs.borrow();
-                let right = &*rhs.borrow();
-
-                Ok(Rc::new(RefCell::new(match op {
-                    Op::Add => left.add(right),
-                    Op::Subtract => left.sub(right),
-                    Op::Multiply => left.mul(right),
-                    Op::Divide => left.try_div(right)?,
-                    Op::ModDiv => left.try_mod_div(right)?,
-                    Op::QuotDiv => left.try_quot_div(right)?,
-                    Op::Equals => left.eq(right),
-                    Op::NotEquals => left.ne(right),
-                    Op::GreaterThan => left.gt(right),
-                    Op::GreaterEquals => left.ge(right),
-                    Op::LessThan => left.lt(right),
-                    Op::LessEquals => left.le(right),
-                    _ => unimplemented!(),
-                })))
-            }
+            Expr::Op(op, lhs, rhs) => self.evaluate_op(op, *lhs, *rhs, env.clone()),
             Expr::UnaryOp(op, expr) => {
                 let value = self.evaluate_expr(*expr, env.clone())?;
                 let value = &*value.borrow();
@@ -259,6 +236,48 @@ impl Evaluator {
                     _ => value,
                 })
             }
+        }
+    }
+
+    fn evaluate_op(
+        &mut self,
+        op: Op,
+        lhs: Expr,
+        rhs: Expr,
+        env: Rc<RefCell<Environment>>,
+    ) -> Result<RuntimeValue> {
+        let lhs = self.evaluate_expr(lhs, env.clone())?;
+        if let Op::And | Op::Or = op {
+            let left = &*lhs.borrow();
+
+            if (left.is_truthy() && Op::And == op) || (!left.is_truthy() && Op::Or == op) {
+                self.evaluate_expr(rhs, env.clone())
+            } else {
+                Ok(lhs.clone())
+            }
+        } else {
+            let rhs = self.evaluate_expr(rhs, env.clone())?;
+
+            let left = &*lhs.borrow();
+            let right = &*rhs.borrow();
+
+            Ok(Rc::new(RefCell::new(match op {
+                Op::Add => left.add(right),
+                Op::Subtract => left.sub(right),
+                Op::Multiply => left.mul(right),
+                Op::Divide => left.try_div(right)?,
+                Op::ModDiv => left.try_mod_div(right)?,
+                Op::QuotDiv => left.try_quot_div(right)?,
+                Op::Equals => left.eq(right),
+                Op::NotEquals => left.ne(right),
+                Op::GreaterThan => left.gt(right),
+                Op::GreaterEquals => left.ge(right),
+                Op::LessThan => left.lt(right),
+                Op::LessEquals => left.le(right),
+                Op::BineryAnd => left.binery_and(right),
+                Op::BineryOr => left.binery_or(right),
+                _ => unreachable!(),
+            })))
         }
     }
 }
