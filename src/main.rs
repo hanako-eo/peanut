@@ -4,6 +4,7 @@ use runtime::evaluator::Evaluator;
 
 mod errors;
 mod frontend;
+mod memory;
 mod runtime;
 
 fn main() {
