@@ -1,5 +1,5 @@
 use core::{cell::Cell, marker::PhantomData, ops::Deref, ptr::NonNull};
-use std::{fmt::Debug, hash::Hash, rc::Rc};
+use std::{fmt::Debug, hash::Hash, ops::DerefMut};
 
 #[derive(Eq, PartialEq)]
 struct GBoxInner<T> {
@@ -71,6 +71,12 @@ impl<T> Deref for GarbageBox<T> {
     }
 }
 
+impl<T> DerefMut for GarbageBox<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.get_mut()
+    }
+}
+
 impl<T> Clone for GarbageBox<T> {
     fn clone(&self) -> Self {
         let inner = unsafe { self.inner.as_ref() };
@@ -100,7 +106,8 @@ impl<T> Drop for GarbageBox<T> {
     }
 }
 
-pub struct WeakRef<T> {
+#[derive(Debug, Eq, PartialEq)]
+pub struct WeakRef<T: ?Eq> {
     inner: Option<NonNull<GBoxInner<T>>>,
 }
 
@@ -109,10 +116,6 @@ impl<T> WeakRef<T> {
         let inner = unsafe { NonNull::new_unchecked(raw) };
 
         Self { inner: Some(inner) }
-    }
-
-    pub fn empty() -> Self {
-        Self { inner: None }
     }
 
     pub fn get(&self) -> Option<&T> {
@@ -126,5 +129,16 @@ impl<T> WeakRef<T> {
         }
 
         Some(&ptr.value)
+    }
+}
+
+impl<T> Hash for WeakRef<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.hash(state)
+    }
+}
+impl<T> From<GarbageBox<T>> for WeakRef<T> {
+    fn from(gbox: GarbageBox<T>) -> Self {
+        GarbageBox::downgrade(&gbox)
     }
 }
