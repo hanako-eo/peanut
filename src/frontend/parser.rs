@@ -210,10 +210,13 @@ impl Parser {
                 (false, false) => None,
                 (false, true) => {
                     self.eat();
-                    Some(self.parse_expr()?)
+                    self.expect(TokenKind::OpenParen)?;
+                    let expr = self.parse_expr()?;
+                    self.expect(TokenKind::CloseParen)?;
+                    Some(expr)
                 }
             };
-
+            
             let body = Box::new(self.parse_expr()?);
             match condition {
                 Some(condition) => conditions.push((Some(condition), body)),
@@ -229,7 +232,9 @@ impl Parser {
     }
 
     fn parse_while_expr(&mut self) -> Result<Expr> {
+        self.expect(TokenKind::OpenParen)?;
         let condition = self.parse_expr()?;
+        self.expect(TokenKind::CloseParen)?;
         let body = self.parse_expr()?;
         Ok(Expr::While(Box::new(condition), Box::new(body)))
     }
@@ -503,7 +508,7 @@ mod tests {
 
     #[test]
     fn while_loop() {
-        let ast = Parser::parse("while 2 1");
+        let ast = Parser::parse("while (2) 1");
 
         assert_eq!(
             ast,
@@ -516,7 +521,7 @@ mod tests {
 
     #[test]
     fn condition() {
-        let ast = Parser::parse("if 2 1");
+        let ast = Parser::parse("if (2) 1");
 
         assert_eq!(
             ast,
@@ -526,7 +531,7 @@ mod tests {
             )]))]))
         );
 
-        let ast = Parser::parse("if 2 1 else if 4 3");
+        let ast = Parser::parse("if (2) 1 else if (4) 3");
 
         assert_eq!(
             ast,
@@ -542,7 +547,7 @@ mod tests {
             ]))]))
         );
 
-        let ast = Parser::parse("if 2 1 else 3");
+        let ast = Parser::parse("if (2) 1 else 3");
 
         assert_eq!(
             ast,
