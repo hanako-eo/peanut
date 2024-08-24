@@ -29,12 +29,12 @@ impl TryFrom<Token> for Op {
 
     fn try_from(value: Token) -> Result<Self> {
         match value.kind() {
-            &TokenKind::And => Ok(Op::And),
-            &TokenKind::Or => Ok(Op::Or),
+            &TokenKind::AmpAmp => Ok(Op::And),
+            &TokenKind::PipePipe => Ok(Op::Or),
             &TokenKind::Amp => Ok(Op::BineryAnd),
             &TokenKind::Pipe => Ok(Op::BineryOr),
             &TokenKind::Equals => Ok(Op::Equals),
-            &TokenKind::NotEqual => Ok(Op::NotEquals),
+            &TokenKind::BangEqual => Ok(Op::NotEquals),
             &TokenKind::Greater => Ok(Op::GreaterThan),
             &TokenKind::GreaterEqual => Ok(Op::GreaterEquals),
             &TokenKind::Less => Ok(Op::LessThan),

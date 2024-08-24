@@ -1,6 +1,6 @@
 #[derive(Clone, Debug, PartialEq)]
-pub enum TokenKind {
-    // Sigils
+pub enum TokenKind<'s> {
+    // Symbols
     OpenBrace,    // {
     CloseBrace,   // }
     OpenBracket,  // [
@@ -12,12 +12,19 @@ pub enum TokenKind {
     Comma,        // ,
     Dot,          // .
     Plus,         // +
+    PlusPlus,     // ++
+    PlusEqual,    // +=
+    PPlusEqual,   // ++=
     Minus,        // -
+    MinusEqual,   // -=
     Star,         // *
+    StarEqual,    // *=
     Slash,        // /
+    SlashEqual,   // /=
     Percent,      // %
-    Not,          // !
-    NotEqual,     // !=
+    PercentEqual, // %=
+    Bang,         // !
+    BangEqual,    // !=
     Equal,        // =
     Equals,       // ==
     Greater,      // >
@@ -25,15 +32,16 @@ pub enum TokenKind {
     Less,         // <
     LessEqual,    // <=
     Amp,          // &
-    And,          // &&
+    AmpAmp,       // &&
     Pipe,         // |
-    Or,           // ||
+    PipePipe,     // ||
     BigArrow,     // =>
 
     // Literals
-    ID(String),
+    Ident(&'s str),
+    RawString(&'s str),
     String(String),
-    Number(String),
+    Number(&'s str),
 
     // Keywords
     Const,
@@ -51,18 +59,18 @@ pub enum TokenKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Token {
-    kind: TokenKind,
+pub struct Token<'k> {
+    kind: TokenKind<'k>,
     pos: usize,
     len: usize,
 }
 
-impl Token {
-    pub fn new(kind: TokenKind, pos: usize, len: usize) -> Self {
+impl<'k> Token<'k> {
+    pub fn new(kind: TokenKind<'k>, pos: usize, len: usize) -> Self {
         Self { kind, pos, len }
     }
 
-    pub fn kind(&self) -> &TokenKind {
+    pub fn kind(&self) -> &TokenKind<'k> {
         &self.kind
     }
 

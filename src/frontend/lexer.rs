@@ -1,6 +1,5 @@
 use core::mem;
 use core::str::CharIndices;
-use std::collections::VecDeque;
 
 use crate::errors::{Error, ErrorKind, Result};
 
@@ -39,15 +38,6 @@ impl<'i> Lexer<'i> {
             lookahead,
             lookahead2,
         }
-    }
-
-    pub fn tokenize(source: &'i str) -> Result<VecDeque<Token>> {
-        let lexer = Self::new(source);
-        let mut tokens = VecDeque::new();
-        for token in lexer {
-            tokens.push_back(token?);
-        }
-        Ok(tokens)
     }
 
     fn bump(&mut self) -> CharIndice {
@@ -116,7 +106,7 @@ impl<'i> Lexer<'i> {
             .and_then(|i| self.source.get(start..i))
     }
 
-    fn collect_number(&mut self, start: usize) -> Result<Token> {
+    fn collect_number(&mut self, start: usize) -> Result<'i, Token<'i>> {
         let end = self.skip_until(|ch, _, _| !(ch == '_' || ch.is_ascii_digit()));
 
         // Check if it's a decimal or a field access after the . char
@@ -126,62 +116,182 @@ impl<'i> Lexer<'i> {
                 return self
                     .skip_until(|ch, _, _| !(ch == '_' || ch.is_ascii_digit()))
                     .and_then(|i| self.source.get(start..i))
-                    .and_then(|str| Some((str.replace("_", ""), str.len())))
-                    .map(|(number, len)| Token::new(TokenKind::Number(number), start, len))
+                    .map(|str| Token::new(TokenKind::Number(str), start, str.len()))
                     .ok_or(Error::from_kind(ErrorKind::Unexpected));
             }
         }
 
         end.and_then(|i| self.source.get(start..i))
-            .and_then(|str| Some((str.replace("_", ""), str.len())))
-            .map(|(number, len)| Token::new(TokenKind::Number(number), start, len))
+            .map(|str| Token::new(TokenKind::Number(str), start, str.len()))
             .ok_or(Error::from_kind(ErrorKind::Unexpected))
     }
 
-    fn collect_string(&mut self, quote: char, start: usize) -> Result<Token> {
+    // FIXME: collect and parse \n, \t and more
+    fn collect_string(&mut self, raw: bool, quote: char, start: usize) -> Result<'i, Token<'i>> {
         let (line, col) = (self.line, self.col - 1);
+        let Some((mut end, mut current_char)) = self.bump() else {
+            unreachable!()
+        };
 
-        self.collect_until(start, |ch, previous, _| {
-            (ch == quote || ch == '\n') && matches!(previous, Some((_, ch)) if ch != '\\')
-        })
-        .and_then(|str| match self.bump() {
-            Some((_, ch)) if ch == quote => Some(Token::new(
-                TokenKind::String(
-                    str[1..].replace(format!("\\{}", quote).as_str(), quote.to_string().as_str()),
-                ),
+        if raw {
+            // we add 2 to remove r" to the result string
+            self.collect_until(start + 2, |ch, _, _| (ch == quote || ch == '\n'))
+                .and_then(|str| match self.bump() {
+                    Some((_, ch)) if ch == quote => {
+                        // we add 3 so as not to forget the r character and the two "
+                        Some(Token::new(TokenKind::RawString(str), start, str.len() + 3))
+                    }
+                    _ => None,
+                })
+                .ok_or(Error::from_kind(ErrorKind::MissingCharacter(
+                    (line, col),
+                    quote,
+                )))
+        } else {
+            let mut result_string = String::new();
+            while current_char != quote {
+                if current_char == '\\' {
+                    let (_, to_escape) =
+                        self.bump()
+                            .ok_or(Error::from_kind(ErrorKind::EscapeSequence((
+                                self.line,
+                                self.col - 1,
+                            ))))?;
+
+                    match to_escape {
+                        '0' => result_string.push('\0'),
+                        'n' => result_string.push('\n'),
+                        'r' => result_string.push('\r'),
+                        't' => result_string.push('\t'),
+                        '\n' => {}
+                        c => result_string.push(c),
+                    }
+                } else {
+                    result_string.push(current_char);
+                }
+
+                (end, current_char) =
+                    self.bump()
+                        .ok_or(Error::from_kind(ErrorKind::MissingCharacter(
+                            (line, col),
+                            quote,
+                        )))?;
+            }
+
+            Ok(Token::new(
+                TokenKind::String(result_string),
                 start,
-                str.len() + 1,
-            )),
-            _ => None,
-        })
-        .ok_or(Error::from_kind(ErrorKind::MissingCharacter(
-            (line, col),
-            quote,
-        )))
+                end - start + 1,
+            ))
+        }
     }
 }
 
 impl<'i> Iterator for Lexer<'i> {
-    type Item = Result<Token>;
+    type Item = Result<'i, Token<'i>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace();
 
-        match self.bump() {
-            Some((i, '{')) => Some(Ok(Token::new(TokenKind::OpenBrace, i, 1))),
-            Some((i, '}')) => Some(Ok(Token::new(TokenKind::CloseBrace, i, 1))),
-            Some((i, '(')) => Some(Ok(Token::new(TokenKind::OpenParen, i, 1))),
-            Some((i, ')')) => Some(Ok(Token::new(TokenKind::CloseParen, i, 1))),
-            Some((i, '[')) => Some(Ok(Token::new(TokenKind::OpenBracket, i, 1))),
-            Some((i, ']')) => Some(Ok(Token::new(TokenKind::CloseBracket, i, 1))),
-            Some((i, ':')) => Some(Ok(Token::new(TokenKind::Colon, i, 1))),
-            Some((i, ';')) => Some(Ok(Token::new(TokenKind::Semicolon, i, 1))),
-            Some((i, ',')) => Some(Ok(Token::new(TokenKind::Comma, i, 1))),
-            Some((i, '.')) => Some(Ok(Token::new(TokenKind::Dot, i, 1))),
-            Some((i, '+')) => Some(Ok(Token::new(TokenKind::Plus, i, 1))),
-            Some((i, '-')) => Some(Ok(Token::new(TokenKind::Minus, i, 1))),
-            Some((i, '*')) => Some(Ok(Token::new(TokenKind::Star, i, 1))),
-            Some((i, '/')) => match self.lookahead {
+        enum Started<'t> {
+            Slash,
+            Equal,
+            Plus,
+            RepeatElse(TokenKind<'t>, TokenKind<'t>),
+            IfEqualElse(TokenKind<'t>, TokenKind<'t>),
+        }
+
+        let (position, char) = self.bump()?;
+        let started = match char {
+            'r' if matches!(self.lookahead, Some((_, '"')) | Some((_, '\''))) => {
+                let Some((_, char)) = self.bump() else {
+                    unreachable!()
+                };
+                return Some(self.collect_string(true, char, position));
+            }
+            '"' | '\'' => return Some(self.collect_string(false, char, position)),
+
+            '{' => return Some(Ok(Token::new(TokenKind::OpenBrace, position, 1))),
+            '}' => return Some(Ok(Token::new(TokenKind::CloseBrace, position, 1))),
+            '(' => return Some(Ok(Token::new(TokenKind::OpenParen, position, 1))),
+            ')' => return Some(Ok(Token::new(TokenKind::CloseParen, position, 1))),
+            '[' => return Some(Ok(Token::new(TokenKind::OpenBracket, position, 1))),
+            ']' => return Some(Ok(Token::new(TokenKind::CloseBracket, position, 1))),
+            ':' => return Some(Ok(Token::new(TokenKind::Colon, position, 1))),
+            ';' => return Some(Ok(Token::new(TokenKind::Semicolon, position, 1))),
+            ',' => return Some(Ok(Token::new(TokenKind::Comma, position, 1))),
+            '.' => return Some(Ok(Token::new(TokenKind::Dot, position, 1))),
+            '+' => Started::Plus,
+            '/' => Started::Slash,
+            '=' => Started::Equal,
+            '-' => Started::IfEqualElse(TokenKind::MinusEqual, TokenKind::Minus),
+            '*' => Started::IfEqualElse(TokenKind::StarEqual, TokenKind::Star),
+            '%' => Started::IfEqualElse(TokenKind::PercentEqual, TokenKind::Percent),
+            '!' => Started::IfEqualElse(TokenKind::BangEqual, TokenKind::Bang),
+            '>' => Started::IfEqualElse(TokenKind::GreaterEqual, TokenKind::Greater),
+            '<' => Started::IfEqualElse(TokenKind::LessEqual, TokenKind::Less),
+            '&' => Started::RepeatElse(TokenKind::AmpAmp, TokenKind::Amp),
+            '|' => Started::RepeatElse(TokenKind::PipePipe, TokenKind::Pipe),
+
+            ch if ch == '_' || ch == '$' || ch.is_alphabetic() => {
+                return Some(
+                    self.collect_until(position, |ch, _, _| {
+                        !(ch == '_' || ch == '$' || ch.is_alphanumeric())
+                    })
+                    .map(|id| {
+                        Token::new(
+                            match id {
+                                "func" => TokenKind::Func,
+                                "let" => TokenKind::Let,
+                                "const" => TokenKind::Const,
+                                "if" => TokenKind::If,
+                                "else" => TokenKind::Else,
+                                "while" => TokenKind::While,
+                                "for" => TokenKind::For,
+                                "in" => TokenKind::In,
+                                "return" => TokenKind::Return,
+                                "yield" => TokenKind::Yield,
+                                "break" => TokenKind::Break,
+                                "continue" => TokenKind::Continue,
+
+                                id => TokenKind::Ident(id),
+                            },
+                            position,
+                            id.len(),
+                        )
+                    })
+                    .ok_or(Error::from_kind(ErrorKind::Unexpected)),
+                )
+            }
+
+            ch if ch.is_ascii_digit() => return Some(self.collect_number(position)),
+            ch => {
+                return Some(Err(Error::from_kind(ErrorKind::InvalidChar(
+                    (self.line, self.col - 1),
+                    ch,
+                ))))
+            }
+        };
+
+        match started {
+            Started::Plus => match self.lookahead {
+                Some((_, '=')) => {
+                    self.bump();
+                    Some(Ok(Token::new(TokenKind::PlusEqual, position, 2)))
+                }
+                Some((_, '+')) => {
+                    self.bump();
+                    match self.lookahead {
+                        Some((_, '=')) => {
+                            self.bump();
+                            Some(Ok(Token::new(TokenKind::PPlusEqual, position, 3)))
+                        }
+                        _ => Some(Ok(Token::new(TokenKind::PlusPlus, position, 2))),
+                    }
+                }
+                _ => Some(Ok(Token::new(TokenKind::Plus, position, 1))),
+            },
+            Started::Slash => match self.lookahead {
                 Some((_, '/')) => {
                     self.skip_to_endline();
                     self.next()
@@ -190,125 +300,52 @@ impl<'i> Iterator for Lexer<'i> {
                     self.skip_to_endcomment();
                     self.next()
                 }
-                _ => Some(Ok(Token::new(TokenKind::Slash, i, 1))),
+                _ => Some(Ok(Token::new(TokenKind::Slash, position, 1))),
             },
-            Some((i, '%')) => Some(Ok(Token::new(TokenKind::Percent, i, 1))),
-
-            Some((i, '!')) => {
-                if let Some((_, '=')) = self.lookahead {
-                    self.bump();
-                    Some(Ok(Token::new(TokenKind::NotEqual, i, 2)))
-                } else {
-                    Some(Ok(Token::new(TokenKind::Not, i, 1)))
-                }
-            }
-
-            Some((i, '=')) => match self.lookahead {
+            Started::Equal => match self.lookahead {
                 Some((_, '=')) => {
                     self.bump();
-                    Some(Ok(Token::new(TokenKind::Equals, i, 2)))
+                    Some(Ok(Token::new(TokenKind::Equals, position, 2)))
                 }
                 Some((_, '>')) => {
                     self.bump();
-                    Some(Ok(Token::new(TokenKind::BigArrow, i, 2)))
+                    Some(Ok(Token::new(TokenKind::BigArrow, position, 2)))
                 }
-                _ => Some(Ok(Token::new(TokenKind::Equal, i, 1))),
+                _ => Some(Ok(Token::new(TokenKind::Equal, position, 1))),
             },
-
-            Some((i, '>')) => {
-                if let Some((_, '=')) = self.lookahead {
+            Started::IfEqualElse(yes, no) => match self.lookahead {
+                Some((_, '=')) => {
                     self.bump();
-                    Some(Ok(Token::new(TokenKind::GreaterEqual, i, 2)))
-                } else {
-                    Some(Ok(Token::new(TokenKind::Greater, i, 1)))
+                    Some(Ok(Token::new(yes, position, 2)))
                 }
-            }
-
-            Some((i, '<')) => {
-                if let Some((_, '=')) = self.lookahead {
+                _ => Some(Ok(Token::new(no, position, 1))),
+            },
+            Started::RepeatElse(yes, no) => match self.lookahead {
+                Some((_, lookahead)) if lookahead == char => {
                     self.bump();
-                    Some(Ok(Token::new(TokenKind::LessEqual, i, 2)))
-                } else {
-                    Some(Ok(Token::new(TokenKind::Less, i, 1)))
+                    Some(Ok(Token::new(yes, position, 2)))
                 }
-            }
-
-            Some((i, '&')) => {
-                if let Some((_, '&')) = self.lookahead {
-                    self.bump();
-                    Some(Ok(Token::new(TokenKind::And, i, 2)))
-                } else {
-                    Some(Ok(Token::new(TokenKind::Amp, i, 1)))
-                }
-            }
-
-            Some((i, '|')) => {
-                if let Some((_, '|')) = self.lookahead {
-                    self.bump();
-                    Some(Ok(Token::new(TokenKind::Or, i, 2)))
-                } else {
-                    Some(Ok(Token::new(TokenKind::Pipe, i, 1)))
-                }
-            }
-
-            Some((i, '"')) => Some(self.collect_string('"', i)),
-            Some((i, '\'')) => Some(self.collect_string('\'', i)),
-
-            Some((i, ch)) if ch == '_' || ch == '$' || ch.is_alphabetic() => Some(
-                self.collect_until(i, |ch, _, _| {
-                    !(ch == '_' || ch == '$' || ch.is_alphanumeric())
-                })
-                .and_then(|id| {
-                    Some((
-                        match id {
-                            "func" => TokenKind::Func,
-                            "let" => TokenKind::Let,
-                            "const" => TokenKind::Const,
-                            "if" => TokenKind::If,
-                            "else" => TokenKind::Else,
-                            "while" => TokenKind::While,
-                            "for" => TokenKind::For,
-                            "in" => TokenKind::In,
-                            "return" => TokenKind::Return,
-                            "yield" => TokenKind::Yield,
-                            "break" => TokenKind::Break,
-                            "continue" => TokenKind::Continue,
-
-                            id => TokenKind::ID(id.into()),
-                        },
-                        id.len(),
-                    ))
-                })
-                .and_then(|(kind, len)| Some(Token::new(kind, i, len)))
-                .ok_or(Error::from_kind(ErrorKind::Unexpected)),
-            ),
-
-            Some((i, ch)) if ch.is_ascii_digit() => Some(self.collect_number(i)),
-            Some((_, ch)) => Some(Err(Error::from_kind(ErrorKind::InvalidChar(
-                (self.line, self.col - 1),
-                ch,
-            )))),
-            None => None,
+                _ => Some(Ok(Token::new(no, position, 1))),
+            },
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::VecDeque;
-
-    use crate::errors::{Error, ErrorKind};
+    use crate::errors::{Error, ErrorKind, Result};
     use crate::frontend::token::{Token, TokenKind};
 
     use super::Lexer;
 
     #[test]
     fn keywords() {
-        let tokens = Lexer::tokenize("func let const if else while for in return");
+        let tokens = Lexer::new("func let const if else while for in return")
+            .collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
-            Ok(VecDeque::from([
+            Ok(Vec::from([
                 Token::new(TokenKind::Func, 0, 4),
                 Token::new(TokenKind::Let, 5, 3),
                 Token::new(TokenKind::Const, 9, 5),
@@ -324,50 +361,52 @@ mod tests {
 
     #[test]
     fn identifier() {
-        let tokens = Lexer::tokenize("a ab a1 _ _a _1 $ $a 識別子 しきべつし αναγνωριστικό");
+        let tokens = Lexer::new("a ab a1 _ _a _1 $ $a 識別子 しきべつし αναγνωριστικό")
+            .collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
-            Ok(VecDeque::from([
-                Token::new(TokenKind::ID("a".into()), 0, 1),
-                Token::new(TokenKind::ID("ab".into()), 2, 2),
-                Token::new(TokenKind::ID("a1".into()), 5, 2),
-                Token::new(TokenKind::ID("_".into()), 8, 1),
-                Token::new(TokenKind::ID("_a".into()), 10, 2),
-                Token::new(TokenKind::ID("_1".into()), 13, 2),
-                Token::new(TokenKind::ID("$".into()), 16, 1),
-                Token::new(TokenKind::ID("$a".into()), 18, 2),
-                Token::new(TokenKind::ID("識別子".into()), 21, 9),
-                Token::new(TokenKind::ID("しきべつし".into()), 31, 15),
-                Token::new(TokenKind::ID("αναγνωριστικό".into()), 47, 26)
+            Ok(Vec::from([
+                Token::new(TokenKind::Ident("a".into()), 0, 1),
+                Token::new(TokenKind::Ident("ab".into()), 2, 2),
+                Token::new(TokenKind::Ident("a1".into()), 5, 2),
+                Token::new(TokenKind::Ident("_".into()), 8, 1),
+                Token::new(TokenKind::Ident("_a".into()), 10, 2),
+                Token::new(TokenKind::Ident("_1".into()), 13, 2),
+                Token::new(TokenKind::Ident("$".into()), 16, 1),
+                Token::new(TokenKind::Ident("$a".into()), 18, 2),
+                Token::new(TokenKind::Ident("識別子".into()), 21, 9),
+                Token::new(TokenKind::Ident("しきべつし".into()), 31, 15),
+                Token::new(TokenKind::Ident("αναγνωριστικό".into()), 47, 26)
             ]))
         );
     }
 
     #[test]
     fn number() {
-        let tokens = Lexer::tokenize("1 1_02 2.5");
+        let tokens = Lexer::new("1 1_02 2.5").collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
-            Ok(VecDeque::from([
-                Token::new(TokenKind::Number("1".into()), 0, 1),
-                Token::new(TokenKind::Number("102".into()), 2, 4),
-                Token::new(TokenKind::Number("2.5".into()), 7, 3)
+            Ok(Vec::from([
+                Token::new(TokenKind::Number("1"), 0, 1),
+                Token::new(TokenKind::Number("1_02"), 2, 4),
+                Token::new(TokenKind::Number("2.5"), 7, 3)
             ]))
         );
     }
 
     #[test]
     fn comment() {
-        let tokens = Lexer::tokenize("test /* hello :) */ test // hello 2\ntest");
+        let tokens = Lexer::new("test /* hello :) */ test // hello 2\ntest")
+            .collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
-            Ok(VecDeque::from([
-                Token::new(TokenKind::ID("test".into()), 0, 4),
-                Token::new(TokenKind::ID("test".into()), 20, 4),
-                Token::new(TokenKind::ID("test".into()), 36, 4)
+            Ok(Vec::from([
+                Token::new(TokenKind::Ident("test".into()), 0, 4),
+                Token::new(TokenKind::Ident("test".into()), 20, 4),
+                Token::new(TokenKind::Ident("test".into()), 36, 4)
             ]))
         );
     }
@@ -375,35 +414,38 @@ mod tests {
     #[test]
     fn string() {
         assert_eq!('"', '\"');
-        let tokens = Lexer::tokenize("\"hello\" 'hi' \"yo \\\"\"");
+        let tokens = Lexer::new("\"hello\" 'hi' \"yo \\\"\" \"he\\nllo\" r\"he\\nllo\"")
+            .collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
-            Ok(VecDeque::from([
+            Ok(Vec::from([
                 Token::new(TokenKind::String("hello".into()), 0, 7),
                 Token::new(TokenKind::String("hi".into()), 8, 4),
                 Token::new(TokenKind::String("yo \"".into()), 13, 7),
+                Token::new(TokenKind::String("he\nllo".into()), 21, 9),
+                Token::new(TokenKind::RawString("he\\nllo"), 31, 10),
             ]))
         );
     }
 
     #[test]
     fn errors() {
-        let tokens = Lexer::tokenize("#");
+        let tokens = Lexer::new("#").collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
             Err(Error::from_kind(ErrorKind::InvalidChar((1, 1), '#')))
         );
 
-        let tokens = Lexer::tokenize("1 #");
+        let tokens = Lexer::new("1 #").collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
             Err(Error::from_kind(ErrorKind::InvalidChar((1, 3), '#')))
         );
 
-        let tokens = Lexer::tokenize("'aaa");
+        let tokens = Lexer::new("'aaa").collect::<Result<Vec<Token<'_>>>>();
 
         assert_eq!(
             tokens,
